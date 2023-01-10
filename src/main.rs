@@ -1,10 +1,19 @@
-use std::fs::File;
+use std::fs::{File, read_to_string};
 use std::io::{prelude::*, BufReader};
 
 
+#[derive(Debug)]
 enum Keyword {
     Namespace,
     Use,
+} impl Keyword {
+    pub fn from_string(string: String) -> Option<Self> {
+        match string.as_str() {
+            "namespace" => Some(Self::Namespace),
+            "use" => Some(Self::Use),
+            _ => None,
+        }
+    }
 }
 
 
@@ -14,7 +23,7 @@ enum Token {
     Symbol(char),
     Identifier(String),
     Number(String),
-    // Keyword(Keyword),
+    Keyword(Keyword),
 }
 impl Token {
     pub fn vec_from_string(string: String) -> Vec<Self> {
@@ -25,9 +34,14 @@ impl Token {
             if c.is_whitespace() {
                 is_space = true;
                 continue;
-            }
-            if is_space || !last.try_push(c) {
+            } else if is_space || !last.try_push(c) {
                 if !last.is_none() {
+                    if let Token::Identifier(ref s) = last {
+                        let keyword = Keyword::from_string(s.to_string());
+                        if let Some(k) = keyword {
+                            last = Self::Keyword(k);
+                        }
+                    }
                     result.push(last);
                 }
                 last = Self::from_char(c);
@@ -46,11 +60,9 @@ impl Token {
     fn from_char(c: char) -> Self {
         if c.is_alphabetic() {
             Token::Identifier(c.to_string())
-        }
-        else if c.is_numeric() {
+        } else if c.is_numeric() {
             Token::Number(c.to_string())
-        }
-        else {
+        } else {
             Token::Symbol(c)
         }
     }
@@ -58,12 +70,12 @@ impl Token {
         let is_matching = match self {
             Token::Identifier(_) => c.is_alphanumeric(),
             Token::Number(_) => c.is_numeric(),
-            Token::Symbol(_) | Token::None => false,
+            Token::Symbol(_) | Token::Keyword(_) | Token::None => false,
         };
         if is_matching {
             match self {
                 Token::Identifier(s) | Token::Number(s) => s.push(c),
-                Token::Symbol(_) | Token::None => (),
+                Token::Symbol(_) | Token::Keyword(_) | Token::None => (),
             }
             return true;
         }
@@ -114,6 +126,9 @@ struct GraphingCalculator {
 
 
 fn main() {
-    let bruh = Token::vec_from_string("x = {\n  x=5:1,\n  0\n}".to_string());
-    println!("{:?}", bruh);
+
+    let contents = read_to_string("test_tokenizer.ds")
+        .expect("Should have been able to read the file");
+    let tokens = Token::vec_from_string(contents);
+    println!("{:?}", tokens);
 }
