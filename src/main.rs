@@ -6,11 +6,13 @@ use std::io::{prelude::*, BufReader};
 enum Keyword {
     Namespace,
     Use,
+    End,
 } impl Keyword {
     pub fn from_string(string: String) -> Option<Self> {
         match string.as_str() {
             "namespace" => Some(Self::Namespace),
             "use" => Some(Self::Use),
+            "end" => Some(Self::End),
             _ => None,
         }
     }
@@ -84,7 +86,50 @@ impl Token {
 }
 
 
+#[derive(Debug)]
+enum AbstractSyntaxItem {
+    NamespaceStart(String),
+    Expression(Vec<Token>),
+    NamespaceEnd,
+} impl AbstractSyntaxItem {
+    pub fn vec_from_tokens(tokens: Vec<Token>) -> Vec<Self> {
+        let mut result: Vec<Self> = vec![];
+        let mut expression: Vec<Token> = vec![];
+        let mut is_namespace_start = false;
+        for token in tokens.iter() {
+            match token {
+                Token::Keyword(Keyword::Namespace) => {
+                    is_namespace_start = true;
+                },
+                Token::Keyword(Keyword::End) => result.push(Self::NamespaceEnd),
+                Token::Symbol(';') => {
+                    result.push(Self::Expression(expression));
+                    expression = vec![];
+                },
+                t => {
+                    if is_namespace_start {
+                        if let Token::Identifier(i) = t {
+                            result.push(Self::NamespaceStart(i.to_string()));
+                        }
+                        is_namespace_start = false;
+                        continue;
+                    }
+                    expression.push(match t {
+                        Token::Identifier(n) => Token::Identifier(String::from(n)),
+                        Token::Number(n) => Token::Identifier(String::from(n)),
+                        Token::Symbol(n) => Token::Symbol(*n),
+                        _ => Token::None,
+                    });
+                }
+            }
+        }
+        result.push(Self::Expression(expression));
+        return result;
+    }
+}
 
+
+/*
 #[derive(Debug)]
 enum AbstractSyntaxTree {
     Token(Token),
@@ -143,10 +188,10 @@ struct ASTFactory {
 } impl ASTFactory {
     fn get_namespace(&self, index: usize) -> Result<(AbstractSyntaxTree, usize), String> {
         let mut i = index;
-        if let Token::Identifier(namespace_name) = self.tokens[i] {
+        if let Token::Identifier(namespace_name) = &self.tokens[i] {
             let n = namespace_name.to_string();
             i += 1;
-            if let Token::Symbol('{') = self.tokens[i] {
+            if let Token::Symbol('{') = &self.tokens[i] {
                 return self.get_tree(n, i+1); 
             }
         }
@@ -157,19 +202,15 @@ struct ASTFactory {
         let mut curly_layer = 0;
         let mut i = index;
         loop {
-            if index >= self.tokens.len() {
-                break;
-            } else {
-                match self.tokens[i] {
-                    Token::Keyword(Keyword::Namespace) => {
-                        match self.get_namespace(i+1) {
-                            Ok((abt, temp_i)) => {
-                                tree_tokens.push(abt);
-                                i = temp_i;
-                                continue;
-                            },
-                            e => return e,
-                        }
+            if let Some(token) = self.tokens.get(i) {
+                match token {
+                    Token::Keyword(Keyword::Namespace) => match self.get_namespace(i+1) {
+                        Ok((abt, temp_i)) => {
+                            tree_tokens.push(abt);
+                            i = temp_i;
+                            continue;
+                        },
+                        e => return e,
                     },
                     Token::Symbol('{') => curly_layer += 1,
                     Token::Symbol('}') => {
@@ -181,12 +222,15 @@ struct ASTFactory {
                     },
                     t => tree_tokens.push(AbstractSyntaxTree::Token(t)),
                 }
+            } else {
+                break;
             }
             i += 1;
         }
         return Ok((AbstractSyntaxTree::ABT(name, tree_tokens), i));
     }
 }
+*/
 
 
 struct GraphingCalculator {
@@ -230,7 +274,6 @@ fn main() {
     let contents = read_to_string("test_tokenizer.ds")
         .expect("Should have been able to read the file");
     let tokens = Token::vec_from_string(contents);
-    let factory = ASTFactory {tokens: tokens};
-    let tree = factory.get_tree("".to_string(), 0);
-    println!("{:?}", tree);
+    let list = AbstractSyntaxItem::vec_from_tokens(tokens);
+    println!("{:?}", list);
 }
