@@ -21,7 +21,6 @@ enum Keyword {
 
 #[derive(Debug)]
 enum Token {
-    None,
     Symbol(char),
     Identifier(String),
     Number(String),
@@ -29,7 +28,6 @@ enum Token {
 } impl Token {
     pub fn from_ref(token: &Self) -> Self {
         match token {
-            Self::None => Self::None,
             Self::Symbol(c) => Self::Symbol(*c),
             Self::Identifier(i) => Self::Identifier(i.to_string()),
             Self::Number(n) => Self::Number(n.to_string()),
@@ -38,33 +36,37 @@ enum Token {
     }
     pub fn vec_from_string(string: String) -> Vec<Self> {
         let mut result: Vec<Self> = vec![];
-        let mut last: Self = Token::None;
+        let mut last: Option<Self> = None;
         let mut is_after_space = true;
         for c in string.chars() {
             if c.is_whitespace() {
                 is_after_space = true;
                 continue;
-            } else if is_after_space || !last.try_push(c) {
-                if !last.is_none() {
-                    if let Token::Identifier(ref s) = last {
+            } else if let Some(ref mut l) = last {
+                if is_after_space || !l.try_push(c) {
+                    if let Token::Identifier(ref s) = l {
                         let keyword = Keyword::from_string(s.to_string());
                         if let Some(k) = keyword {
-                            last = Self::Keyword(k);
+                            *l = Self::Keyword(k);
                         }
                     }
-                    result.push(last);
+                    result.push(Self::from_ref(l));
                 }
-                last = Self::from_char(c);
+                *l = Self::from_char(c);
+            } else {
+                last = Some(Self::from_char(c));
             }
             is_after_space = false;
         }
-        if let Token::Identifier(ref s) = last {
-            let keyword = Keyword::from_string(s.to_string());
-            if let Some(k) = keyword {
-                last = Self::Keyword(k);
+        if let Some(mut l) = last {
+            if let Token::Identifier(ref s) = l {
+                let keyword = Keyword::from_string(s.to_string());
+                if let Some(k) = keyword {
+                    l = Self::Keyword(k);
+                }
             }
+            result.push(l);
         }
-        result.push(last);
         return result;
     }
     pub fn to_string(&self) -> String {
@@ -85,12 +87,6 @@ enum Token {
         }
         return Err("Not Identifier".to_string());
     }
-    fn is_none(&self) -> bool {
-        if let Self::None = self {
-            return true;
-        }
-        return false;
-    }
     fn from_char(c: char) -> Self {
         if c.is_alphabetic() {
             Token::Identifier(c.to_string().to_uppercase())
@@ -104,7 +100,7 @@ enum Token {
         let is_matching = match self {
             Token::Identifier(_) => c.is_alphanumeric(),
             Token::Number(_) => c.is_numeric(),
-            Token::Symbol(_) | Token::Keyword(_) | Token::None => false,
+            Token::Symbol(_) | Token::Keyword(_) => false,
         };
         if is_matching {
             match self {
@@ -113,7 +109,7 @@ enum Token {
                         s.push(i); 
                     }
                 },
-                Token::Symbol(_) | Token::Keyword(_) | Token::None => (),
+                Token::Symbol(_) | Token::Keyword(_) => (),
             }
             return true;
         }
@@ -150,12 +146,7 @@ enum AbstractSyntaxItem {
                         is_namespace_start = false;
                         continue;
                     }
-                    expression.push(match t {
-                        Token::Identifier(n) => Token::Identifier(String::from(n)),
-                        Token::Number(n) => Token::Number(String::from(n)),
-                        Token::Symbol(n) => Token::Symbol(*n),
-                        _ => Token::None,
-                    });
+                    expression.push(Token::from_ref(t));
                 }
             }
         }
