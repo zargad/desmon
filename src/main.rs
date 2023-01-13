@@ -2,7 +2,7 @@ use std::fs::{File, read_to_string};
 use std::io::{prelude::*, BufReader};
 
 
-#[derive(Debug)]
+#[derive(Debug,Clone,Copy)]
 enum Keyword {
     Namespace,
     Use,
@@ -10,9 +10,9 @@ enum Keyword {
 } impl Keyword {
     pub fn from_string(string: String) -> Option<Self> {
         match string.as_str() {
-            "namespace" => Some(Self::Namespace),
-            "use" => Some(Self::Use),
-            "end" => Some(Self::End),
+            "Namespace" => Some(Self::Namespace),
+            "Use" => Some(Self::Use),
+            "End" => Some(Self::End),
             _ => None,
         }
     }
@@ -26,8 +26,16 @@ enum Token {
     Identifier(String),
     Number(String),
     Keyword(Keyword),
-}
-impl Token {
+} impl Token {
+    pub fn from_ref(token: &Self) -> Self {
+        match token {
+            Self::None => Self::None,
+            Self::Symbol(c) => Self::Symbol(*c),
+            Self::Identifier(i) => Self::Identifier(i.to_string()),
+            Self::Number(n) => Self::Number(n.to_string()),
+            Self::Keyword(k) => Self::Keyword(*k),
+        }
+    }
     pub fn vec_from_string(string: String) -> Vec<Self> {
         let mut result: Vec<Self> = vec![];
         let mut last: Self = Token::None;
@@ -50,8 +58,32 @@ impl Token {
             }
             is_after_space = false;
         }
+        if let Token::Identifier(ref s) = last {
+            let keyword = Keyword::from_string(s.to_string());
+            if let Some(k) = keyword {
+                last = Self::Keyword(k);
+            }
+        }
         result.push(last);
         return result;
+    }
+    pub fn to_string(&self) -> String {
+        match self {
+            Self::Symbol(c) => match c {
+                '{' => String::from("\\\\left\\\\{"),
+                '}' => String::from("\\\\right\\\\}"),
+                cc => c.to_string(),
+            },
+            Self::Identifier(i) => format!("A_{{{}}}", i),
+            Self::Number(n) => n.to_string(),
+            _ => String::new(),
+        }
+    }
+    pub fn set_namespace(&self, namespace: &str) -> Result<Self, String> {
+        if let Self::Identifier(n) = self {
+            return Ok(Self::Identifier(format!("{namespace}{n}")));
+        }
+        return Err("Not Identifier".to_string());
     }
     fn is_none(&self) -> bool {
         if let Self::None = self {
@@ -61,7 +93,7 @@ impl Token {
     }
     fn from_char(c: char) -> Self {
         if c.is_alphabetic() {
-            Token::Identifier(c.to_string())
+            Token::Identifier(c.to_string().to_uppercase())
         } else if c.is_numeric() {
             Token::Number(c.to_string())
         } else {
@@ -76,7 +108,11 @@ impl Token {
         };
         if is_matching {
             match self {
-                Token::Identifier(s) | Token::Number(s) => s.push(c),
+                Token::Identifier(s) | Token::Number(s) => {
+                    for i in c.to_lowercase() {
+                        s.push(i); 
+                    }
+                },
                 Token::Symbol(_) | Token::Keyword(_) | Token::None => (),
             }
             return true;
@@ -116,15 +152,54 @@ enum AbstractSyntaxItem {
                     }
                     expression.push(match t {
                         Token::Identifier(n) => Token::Identifier(String::from(n)),
-                        Token::Number(n) => Token::Identifier(String::from(n)),
+                        Token::Number(n) => Token::Number(String::from(n)),
                         Token::Symbol(n) => Token::Symbol(*n),
                         _ => Token::None,
                     });
                 }
             }
         }
-        result.push(Self::Expression(expression));
+        if expression.len() != 0 {
+            result.push(Self::Expression(expression));
+        }
         return result;
+    }
+    pub fn unwrap_namespaces(list: Vec<Self>) -> Vec<Self> {
+        let mut result: Vec<Self> = vec![];
+        let mut namespaces: Vec<&str> = vec![];
+        for i in list.iter() {
+            match i {
+                Self::NamespaceStart(s) => namespaces.push(s.as_str()),
+                Self::NamespaceEnd => _ = namespaces.pop().unwrap(),
+                Self::Expression(ex) => {
+                    let binding = namespaces.join("");
+                    let namespace = binding.as_str();
+                    result.push(Self::set_namespace(ex, namespace));
+                },
+            }
+        }
+        return result;
+    }
+    pub fn to_string(&self) -> Result<String, String> {
+        let mut result: Vec<String> = vec![];
+        if let Self::Expression(ex) = self {
+            for token in ex.iter() {
+                result.push(token.to_string());
+            }
+            return Ok(result.join(""));
+        }
+        return Err("Not an Expression".to_string());
+    }
+    fn set_namespace(expressions: &Vec<Token>, namespace: &str) -> Self {
+        let mut result: Vec<Token> = vec![];
+        for token in expressions.iter() {
+            if let Ok(t) = token.set_namespace(namespace) {
+                result.push(t);
+            } else {
+                result.push(Token::from_ref(token));
+            }
+        }
+        return Self::Expression(result);
     }
 }
 
@@ -234,15 +309,16 @@ struct ASTFactory {
 
 
 struct GraphingCalculator {
-    expressions: Vec<String>, 
+    expressions: Vec<AbstractSyntaxItem>, 
     api_key: String,
 } impl GraphingCalculator {
-    pub fn new(expressions: Vec<String>) -> Self {
+    pub fn new(expressions: Vec<AbstractSyntaxItem>) -> Self {
         Self {
             expressions: expressions,
             api_key: "dcb31709b452b1cf9dc26972add0fda6".to_string(),
         }
     }
+    /*
     pub fn from_file(path: &str) -> Self {
         let file = File::open(path).expect("Well that sucked");
         let reader = BufReader::new(file);
@@ -252,6 +328,7 @@ struct GraphingCalculator {
         }
         Self::new(expressions)
     }
+    */
     pub fn print_html(&self) {
         println!(r"<script src='{}'></script>
 <div id='calculator' style='width: 600px; height: 400px;'></div>
@@ -259,7 +336,8 @@ struct GraphingCalculator {
     var elt = document.getElementById('calculator');
     var calculator = Desmos.GraphingCalculator(elt);", self.get_api_link());
         for (index, item) in self.expressions.iter().enumerate() {
-            println!("    calculator.setExpression({{id: 'graph{}', latex: '{}'}});", index, item);
+            let temp = item.to_string().unwrap();
+            println!("    calculator.setExpression({{id: 'graph{}', latex: '{}'}});", index, temp);
         }
         println!("</script>");
     }
@@ -275,5 +353,13 @@ fn main() {
         .expect("Should have been able to read the file");
     let tokens = Token::vec_from_string(contents);
     let list = AbstractSyntaxItem::vec_from_tokens(tokens);
-    println!("{:?}", list);
+    // println!("{:?}", list);
+    let temp = AbstractSyntaxItem::unwrap_namespaces(list);
+    /*
+    for i in temp {
+        let ttt = i.to_string().unwrap();
+        println!("{ttt}");
+    }
+    */
+    GraphingCalculator::new(temp).print_html();
 }
