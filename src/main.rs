@@ -43,7 +43,6 @@ enum Token {
                 is_after_space = true;
                 continue;
             } else if let Some(ref mut l) = last {
-                println!("{:?}", l);
                 if is_after_space || !l.try_push(c) {
                     if let Token::Identifier(ref s) = l {
                         let keyword = Keyword::from_string(s.to_string());
@@ -202,110 +201,6 @@ enum AbstractSyntaxItem {
         return Self::Expression(result);
     }
 }
-
-
-/*
-#[derive(Debug)]
-enum AbstractSyntaxTree {
-    Token(Token),
-    ABT(String, Vec<Self>),
-} /* impl AbstractSyntaxTree {
-    fn get_namespace(tokens: &Vec<Token>, index: usize) -> Result<(Self, usize), String> {
-        let mut i = index;
-        if let Token::Identifier(namespace_name) = &tokens[i] {
-            let n = namespace_name.to_string();
-            i += 1;
-            if let Token::Symbol('{') = &tokens[i] {
-                return Self::get_tree(tokens, n, i + 1); 
-            }
-        }
-        return Err("Improper namespace declaration syntax.".to_string());
-    }
-    pub fn get_tree(tokens: &Vec<Token>, name: String, index: usize) -> Result<(Self, usize), String> {
-        let mut tree_tokens: Vec<Self> = vec![];
-        let mut curly_layer = 0;
-        let mut i = index;
-        loop {
-            if index >= tokens.len() {
-                break;
-            } else {
-                match &tokens[i] {
-                    Token::Keyword(Keyword::Namespace) => {
-                        match Self::get_namespace(tokens, i+1) {
-                            Ok((abt, temp_i)) => {
-                                tree_tokens.push(abt);
-                                i = temp_i;
-                                continue;
-                            },
-                            e => return e,
-                        }
-                    },
-                    Token::Symbol('{') => curly_layer += 1,
-                    Token::Symbol('}') => {
-                        if curly_layer == 0 {
-                            break;
-                        } else {
-                            curly_layer += 1;
-                        }
-                    },
-                    t => tree_tokens.push(Self::Token(t)),
-                }
-            }
-            i += 1;
-        }
-        return Ok((Self::ABT(name, tree_tokens), i));
-    }
-} */
-
-
-struct ASTFactory {
-    tokens: Vec<Token>,
-} impl ASTFactory {
-    fn get_namespace(&self, index: usize) -> Result<(AbstractSyntaxTree, usize), String> {
-        let mut i = index;
-        if let Token::Identifier(namespace_name) = &self.tokens[i] {
-            let n = namespace_name.to_string();
-            i += 1;
-            if let Token::Symbol('{') = &self.tokens[i] {
-                return self.get_tree(n, i+1); 
-            }
-        }
-        return Err("Improper namespace declaration syntax.".to_string());
-    }
-    pub fn get_tree(&self, name: String, index: usize) -> Result<(AbstractSyntaxTree, usize), String> {
-        let mut tree_tokens: Vec<AbstractSyntaxTree> = vec![];
-        let mut curly_layer = 0;
-        let mut i = index;
-        loop {
-            if let Some(token) = self.tokens.get(i) {
-                match token {
-                    Token::Keyword(Keyword::Namespace) => match self.get_namespace(i+1) {
-                        Ok((abt, temp_i)) => {
-                            tree_tokens.push(abt);
-                            i = temp_i;
-                            continue;
-                        },
-                        e => return e,
-                    },
-                    Token::Symbol('{') => curly_layer += 1,
-                    Token::Symbol('}') => {
-                        if curly_layer == 0 {
-                            break;
-                        } else {
-                            curly_layer += 1;
-                        }
-                    },
-                    t => tree_tokens.push(AbstractSyntaxTree::Token(t)),
-                }
-            } else {
-                break;
-            }
-            i += 1;
-        }
-        return Ok((AbstractSyntaxTree::ABT(name, tree_tokens), i));
-    }
-}
-*/
 
 
 struct GraphingCalculator {
