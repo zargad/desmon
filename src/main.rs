@@ -35,7 +35,7 @@ enum Token {
         }
     }
     pub fn vec_from_string(string: String) -> Vec<Self> {
-        let mut result: Vec<Self> = vec![];
+        let mut result = vec![];
         let mut last: Option<Self> = None;
         let mut is_after_space = true;
         for c in string.chars() {
@@ -43,6 +43,7 @@ enum Token {
                 is_after_space = true;
                 continue;
             } else if let Some(ref mut l) = last {
+                println!("{:?}", l);
                 if is_after_space || !l.try_push(c) {
                     if let Token::Identifier(ref s) = l {
                         let keyword = Keyword::from_string(s.to_string());
@@ -51,8 +52,8 @@ enum Token {
                         }
                     }
                     result.push(Self::from_ref(l));
+                    *l = Self::from_char(c);
                 }
-                *l = Self::from_char(c);
             } else {
                 last = Some(Self::from_char(c));
             }
@@ -74,7 +75,7 @@ enum Token {
             Self::Symbol(c) => match c {
                 '{' => String::from("\\\\left\\\\{"),
                 '}' => String::from("\\\\right\\\\}"),
-                cc => c.to_string(),
+                _ => c.to_string(),
             },
             Self::Identifier(i) => format!("A_{{{}}}", i),
             Self::Number(n) => n.to_string(),
@@ -106,7 +107,7 @@ enum Token {
             match self {
                 Token::Identifier(s) | Token::Number(s) => {
                     for i in c.to_lowercase() {
-                        s.push(i); 
+                        s.push(i);
                     }
                 },
                 Token::Symbol(_) | Token::Keyword(_) => (),
@@ -119,15 +120,23 @@ enum Token {
 
 
 #[derive(Debug)]
+enum ExpressionItem {
+    Variable(Vec<String>),
+    Token(Token),
+}
+
+
+#[derive(Debug)]
 enum AbstractSyntaxItem {
     NamespaceStart(String),
     Expression(Vec<Token>),
     NamespaceEnd,
 } impl AbstractSyntaxItem {
     pub fn vec_from_tokens(tokens: Vec<Token>) -> Vec<Self> {
-        let mut result: Vec<Self> = vec![];
-        let mut expression: Vec<Token> = vec![];
+        let mut result = vec![];
+        let mut expression = vec![];
         let mut is_namespace_start = false;
+        //let mut variable = vec![];
         for token in tokens.iter() {
             match token {
                 Token::Keyword(Keyword::Namespace) => {
@@ -156,8 +165,8 @@ enum AbstractSyntaxItem {
         return result;
     }
     pub fn unwrap_namespaces(list: Vec<Self>) -> Vec<Self> {
-        let mut result: Vec<Self> = vec![];
-        let mut namespaces: Vec<&str> = vec![];
+        let mut result = vec![];
+        let mut namespaces = vec![];
         for i in list.iter() {
             match i {
                 Self::NamespaceStart(s) => namespaces.push(s.as_str()),
@@ -172,7 +181,7 @@ enum AbstractSyntaxItem {
         return result;
     }
     pub fn to_string(&self) -> Result<String, String> {
-        let mut result: Vec<String> = vec![];
+        let mut result = vec![]; 
         if let Self::Expression(ex) = self {
             for token in ex.iter() {
                 result.push(token.to_string());
@@ -182,7 +191,7 @@ enum AbstractSyntaxItem {
         return Err("Not an Expression".to_string());
     }
     fn set_namespace(expressions: &Vec<Token>, namespace: &str) -> Self {
-        let mut result: Vec<Token> = vec![];
+        let mut result = vec![];
         for token in expressions.iter() {
             if let Ok(t) = token.set_namespace(namespace) {
                 result.push(t);
@@ -328,23 +337,24 @@ struct GraphingCalculator {
     var calculator = Desmos.GraphingCalculator(elt);", self.get_api_link());
         for (index, item) in self.expressions.iter().enumerate() {
             let temp = item.to_string().unwrap();
-            println!("    calculator.setExpression({{id: 'graph{}', latex: '{}'}});", index, temp);
+            println!("    calculator.setExpression({{id: '{index}', latex: '{temp}'}});");
         }
         println!("</script>");
     }
     fn get_api_link(&self) -> String {
-        format!("https://www.desmos.com/api/v1.7/calculator.js?apiKey={}", self.api_key).to_string()
+        let url_start = "https://www.desmos.com/api/v1.7/calculator.js?apiKey=";
+        format!("{url_start}{}", self.api_key).to_string()
     }
 }
 
 
 fn main() {
-
     let contents = read_to_string("test_tokenizer.ds")
         .expect("Should have been able to read the file");
     let tokens = Token::vec_from_string(contents);
+    //println!("{:?}", tokens);
     let list = AbstractSyntaxItem::vec_from_tokens(tokens);
-    // println!("{:?}", list);
+    //println!("{:?}", list);
     let temp = AbstractSyntaxItem::unwrap_namespaces(list);
     /*
     for i in temp {
