@@ -191,18 +191,29 @@ enum AbstractSyntaxItem {
         }
         return Ok(result);
     }
-    /*
-    pub fn to_string(&self) -> Result<String, String> {
+    pub fn get_strings(list: Vec<Self>) -> Vec<String> {
         let mut result = vec![]; 
-        if let Self::Expression(ex) = self {
-            for token in ex.iter() {
-                result.push(token.to_string());
+        let mut namespaces = vec![];
+        let mut expression = vec![];
+        for i in list {
+            match i {
+                Self::ExpressionStart => expression = vec![],
+                Self::ExpressionEnd => result.push(expression.join("")),
+                Self::NamespaceStart(n) => namespaces.push(n),
+                Self::NamespaceEnd => _ = namespaces.pop(),
+                Self::Token(t) => expression.push(t.to_string()),
+                Self::Variable(i) => {
+                    expression.push("A_{{".to_string());
+                    if !i.get(0).unwrap().is_empty() {
+                        expression.push(namespaces.join(""));
+                    }
+                    expression.push(i.join(""));
+                    expression.push("}}".to_string());
+                },
             }
-            return Ok(result.join(""));
         }
-        return Err("Not an Expression".to_string());
+        return result;
     }
-    */
 }
 
 
@@ -250,7 +261,9 @@ fn main() {
     let contents = read_to_string(path)
         .expect("Should have been able to read the file");
     let tokens = Token::vec_from_string(contents);
-    let list = AbstractSyntaxItem::vec_from_tokens(tokens);
-    println!("{list:?}");
+    let list = AbstractSyntaxItem::vec_from_tokens(tokens).unwrap();
+    for i in AbstractSyntaxItem::get_strings(list) {
+        println!("{i:?}");
+    }
     // GraphingCalculator::from_file("test_tokenizer.ds").print_html();
 }
