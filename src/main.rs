@@ -25,6 +25,8 @@ enum Token {
     Identifier(String),
     Number(String),
     Keyword(Keyword),
+    STDFunction(String),
+    STDConstant(String),
 } impl Token {
     pub fn from_ref(token: &Self) -> Self {
         match token {
@@ -32,6 +34,8 @@ enum Token {
             Self::Identifier(i) => Self::Identifier(i.to_string()),
             Self::Number(n) => Self::Number(n.to_string()),
             Self::Keyword(k) => Self::Keyword(*k),
+            Self::STDConstant(p) => Self::STDConstant(p.to_string()),
+            Self::STDFunction(p) => Self::STDFunction(p.to_string()),
         }
     }
     pub fn vec_from_string(string: String) -> Vec<Self> {
@@ -78,6 +82,8 @@ enum Token {
             },
             Self::Identifier(i) => format!("A_{{{}}}", i),
             Self::Number(n) => n.to_string(),
+            Self::STDConstant(c) => format!("\\\\{c} "),
+            Self::STDFunction(f) => format!("\\\\operatorname{{{}}}", f),
             _ => String::new(),
         }
     }
@@ -86,6 +92,10 @@ enum Token {
             Token::Identifier(c.to_string().to_uppercase())
         } else if c.is_numeric() {
             Token::Number(c.to_string())
+        } else if c == '$' {
+            Token::STDConstant(String::new())
+        } else if c == '\\' {
+            Token::STDFunction(String::new())
         } else {
             Token::Symbol(c)
         }
@@ -93,7 +103,8 @@ enum Token {
     fn try_push(&mut self, c: char) -> bool {
         let is_matching = match self {
             Token::Identifier(_) => c.is_alphanumeric(),
-            Token::Number(_) => c.is_numeric(),
+            Token::Number(_) => c.is_numeric() || c == '.',
+            Token::STDConstant(_) | Token::STDFunction(_) => c.is_alphabetic(),
             Token::Symbol(_) | Token::Keyword(_) => false,
         };
         if is_matching {
@@ -103,6 +114,7 @@ enum Token {
                         s.push(i);
                     }
                 },
+                Token::STDConstant(n) | Token::STDFunction(n) => n.push(c),
                 Token::Symbol(_) | Token::Keyword(_) => (),
             }
             return true;
