@@ -42,7 +42,16 @@ enum Token {
         let mut result = vec![];
         let mut last: Option<Self> = None;
         let mut is_after_space = true;
+        let mut is_in_comment = false;
         for c in string.chars() {
+            if c == '\n' {
+                is_in_comment = false;
+            } else if c == '"' {
+                is_in_comment = true;
+            }
+            if is_in_comment {
+                continue;
+            }
             if c.is_whitespace() {
                 is_after_space = true;
                 continue;
