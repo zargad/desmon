@@ -81,12 +81,6 @@ enum Token {
             _ => String::new(),
         }
     }
-    pub fn set_namespace(&self, namespace: &str) -> Result<Self, String> {
-        if let Self::Identifier(n) = self {
-            return Ok(Self::Identifier(format!("{namespace}{n}")));
-        }
-        return Err("Not Identifier".to_string());
-    }
     fn from_char(c: char) -> Self {
         if c.is_alphabetic() {
             Token::Identifier(c.to_string().to_uppercase())
@@ -119,66 +113,85 @@ enum Token {
 
 
 #[derive(Debug)]
-enum ExpressionItem {
-    Variable(Vec<String>),
-    Token(Token),
-}
-
-
-#[derive(Debug)]
 enum AbstractSyntaxItem {
+    ExpressionStart,
+    ExpressionEnd,
     NamespaceStart(String),
-    Expression(Vec<Token>),
     NamespaceEnd,
+    Token(Token),
+    Variable(Vec<String>),
 } impl AbstractSyntaxItem {
-    pub fn vec_from_tokens(tokens: Vec<Token>) -> Vec<Self> {
+    pub fn vec_from_tokens(tokens: Vec<Token>) -> Result<Vec<Self>, &'static str> {
         let mut result = vec![];
-        let mut expression = vec![];
+        let mut variable = vec![];
+        let mut is_variable_continue = false;
         let mut is_namespace_start = false;
-        //let mut variable = vec![];
+        let mut is_expression_end = true;
         for token in tokens.iter() {
+            if is_namespace_start {
+                if let Token::Identifier(name) = token {
+                    result.push(Self::NamespaceStart(name.to_string()));
+                    is_namespace_start = false;
+                    continue;
+                }
+                return Err("There can only be an identifier after namespace");
+            }
             match token {
                 Token::Keyword(Keyword::Namespace) => {
-                    is_namespace_start = true;
-                },
-                Token::Keyword(Keyword::End) => result.push(Self::NamespaceEnd),
-                Token::Symbol(';') => {
-                    result.push(Self::Expression(expression));
-                    expression = vec![];
-                },
-                t => {
-                    if is_namespace_start {
-                        if let Token::Identifier(i) = t {
-                            result.push(Self::NamespaceStart(i.to_string()));
-                        }
-                        is_namespace_start = false;
+                    if !is_expression_end {
+                        is_namespace_start = true;
                         continue;
                     }
-                    expression.push(Token::from_ref(t));
-                }
-            }
-        }
-        if expression.len() != 0 {
-            result.push(Self::Expression(expression));
-        }
-        return result;
-    }
-    pub fn unwrap_namespaces(list: Vec<Self>) -> Vec<Self> {
-        let mut result = vec![];
-        let mut namespaces = vec![];
-        for i in list.iter() {
-            match i {
-                Self::NamespaceStart(s) => namespaces.push(s.as_str()),
-                Self::NamespaceEnd => _ = namespaces.pop().unwrap(),
-                Self::Expression(ex) => {
-                    let binding = namespaces.join("");
-                    let namespace = binding.as_str();
-                    result.push(Self::set_namespace(ex, namespace));
+                    return Err("Namespace can't start in the middle of an expression");
+                },
+                Token::Keyword(Keyword::End) => { 
+                    if !is_expression_end {
+                        result.push(Self::NamespaceEnd);
+                        continue;
+                    }
+                    return Err("Namespace can't end in the middle of an expression");
+                },
+                Token::Identifier(i) => {
+                    if !variable.is_empty() && !is_variable_continue {
+                        if is_expression_end {
+                            result.push(Self::ExpressionStart);
+                            is_expression_end = false;
+                        }
+                        result.push(Self::Variable(variable));
+                        variable = vec![];
+                    }
+                    variable.push(i.to_string());
+                },
+                Token::Symbol(';') => {
+                    if !variable.is_empty() {
+                        result.push(Self::Variable(variable));
+                        variable = vec![];
+                    }
+                    result.push(Self::ExpressionEnd);
+                    is_expression_end = true;
+                },
+                Token::Symbol('.') => {
+                    if variable.is_empty() {
+                        variable.push(String::new());
+                    }
+                    is_variable_continue = true;
+                },
+                t => {
+                    if is_expression_end {
+                        result.push(Self::ExpressionStart);
+                        is_expression_end = false;
+                    }
+                    if !variable.is_empty() {
+                        result.push(Self::Variable(variable));
+                        variable = vec![];
+                    }
+                    result.push(Self::Token(Token::from_ref(t)));
                 },
             }
         }
-        return result;
+        return Ok(result);
     }
+    /*
     pub fn to_string(&self) -> Result<String, String> {
         let mut result = vec![]; 
         if let Self::Expression(ex) = self {
@@ -189,17 +202,7 @@ enum AbstractSyntaxItem {
         }
         return Err("Not an Expression".to_string());
     }
-    fn set_namespace(expressions: &Vec<Token>, namespace: &str) -> Self {
-        let mut result = vec![];
-        for token in expressions.iter() {
-            if let Ok(t) = token.set_namespace(namespace) {
-                result.push(t);
-            } else {
-                result.push(Token::from_ref(token));
-            }
-        }
-        return Self::Expression(result);
-    }
+    */
 }
 
 
@@ -215,15 +218,13 @@ struct GraphingCalculator {
     }
     /*
     pub fn from_file(path: &str) -> Self {
-        let file = File::open(path).expect("Well that sucked");
-        let reader = BufReader::new(file);
-        let mut expressions: Vec<String> = vec![];
-        for line in reader.lines() {
-            expressions.push(line.unwrap());
-        }
-        Self::new(expressions)
+        let contents = read_to_string(path)
+            .expect("Should have been able to read the file");
+        let tokens = Token::vec_from_string(contents);
+        let list = AbstractSyntaxItem::vec_from_tokens(tokens);
+        let temp = AbstractSyntaxItem::unwrap_namespaces(list);
+        return Self::new(temp);
     }
-    */
     pub fn print_html(&self) {
         println!(r"<script src='{}'></script>
 <div id='calculator' style='width: 600px; height: 400px;'></div>
@@ -236,6 +237,7 @@ struct GraphingCalculator {
         }
         println!("</script>");
     }
+    */
     fn get_api_link(&self) -> String {
         let url_start = "https://www.desmos.com/api/v1.7/calculator.js?apiKey=";
         format!("{url_start}{}", self.api_key).to_string()
@@ -244,18 +246,11 @@ struct GraphingCalculator {
 
 
 fn main() {
-    let contents = read_to_string("test_tokenizer.ds")
+    let path = "test_tokenizer.ds";
+    let contents = read_to_string(path)
         .expect("Should have been able to read the file");
     let tokens = Token::vec_from_string(contents);
-    //println!("{:?}", tokens);
     let list = AbstractSyntaxItem::vec_from_tokens(tokens);
-    //println!("{:?}", list);
-    let temp = AbstractSyntaxItem::unwrap_namespaces(list);
-    /*
-    for i in temp {
-        let ttt = i.to_string().unwrap();
-        println!("{ttt}");
-    }
-    */
-    GraphingCalculator::new(temp).print_html();
+    println!("{list:?}");
+    // GraphingCalculator::from_file("test_tokenizer.ds").print_html();
 }
