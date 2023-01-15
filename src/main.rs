@@ -191,7 +191,7 @@ enum AbstractSyntaxItem {
         }
         return Ok(result);
     }
-    pub fn get_strings(list: Vec<Self>) -> Vec<String> {
+    pub fn get_strings(list: &Vec<Self>) -> Vec<String> {
         let mut result = vec![]; 
         let mut namespaces = vec![];
         let mut expression = vec![];
@@ -199,7 +199,7 @@ enum AbstractSyntaxItem {
             match i {
                 Self::ExpressionStart => expression = vec![],
                 Self::ExpressionEnd => result.push(expression.join("")),
-                Self::NamespaceStart(n) => namespaces.push(n),
+                Self::NamespaceStart(n) => namespaces.push(n.to_string()),
                 Self::NamespaceEnd => _ = namespaces.pop(),
                 Self::Token(t) => expression.push(t.to_string()),
                 Self::Variable(i) => {
@@ -227,14 +227,14 @@ struct GraphingCalculator {
             api_key: "dcb31709b452b1cf9dc26972add0fda6".to_string(),
         }
     }
-    /*
-    pub fn from_file(path: &str) -> Self {
+    pub fn from_file(path: &str) -> Result<Self, &'static str> {
         let contents = read_to_string(path)
             .expect("Should have been able to read the file");
         let tokens = Token::vec_from_string(contents);
-        let list = AbstractSyntaxItem::vec_from_tokens(tokens);
-        let temp = AbstractSyntaxItem::unwrap_namespaces(list);
-        return Self::new(temp);
+        match AbstractSyntaxItem::vec_from_tokens(tokens) {
+            Ok(list) => Ok(Self::new(list)),
+            Err(e) => Err(e),
+        }
     }
     pub fn print_html(&self) {
         println!(r"<script src='{}'></script>
@@ -242,13 +242,12 @@ struct GraphingCalculator {
 <script>
     var elt = document.getElementById('calculator');
     var calculator = Desmos.GraphingCalculator(elt);", self.get_api_link());
-        for (index, item) in self.expressions.iter().enumerate() {
-            let temp = item.to_string().unwrap();
-            println!("    calculator.setExpression({{id: '{index}', latex: '{temp}'}});");
+        let temp = AbstractSyntaxItem::get_strings(&self.expressions);
+        for (index, item) in temp.iter().enumerate() {
+            println!("    calculator.setExpression({{id: '{index}', latex: '{item}'}});");
         }
         println!("</script>");
     }
-    */
     fn get_api_link(&self) -> String {
         let url_start = "https://www.desmos.com/api/v1.7/calculator.js?apiKey=";
         format!("{url_start}{}", self.api_key).to_string()
@@ -257,13 +256,5 @@ struct GraphingCalculator {
 
 
 fn main() {
-    let path = "test_tokenizer.ds";
-    let contents = read_to_string(path)
-        .expect("Should have been able to read the file");
-    let tokens = Token::vec_from_string(contents);
-    let list = AbstractSyntaxItem::vec_from_tokens(tokens).unwrap();
-    for i in AbstractSyntaxItem::get_strings(list) {
-        println!("{i:?}");
-    }
-    // GraphingCalculator::from_file("test_tokenizer.ds").print_html();
+    GraphingCalculator::from_file("test_tokenizer.ds").unwrap().print_html();
 }
