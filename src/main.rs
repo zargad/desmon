@@ -55,6 +55,11 @@ enum Token {
     STDFunction(String),
     STDConstant(String),
 } impl Token {
+    pub fn vec_from_file(path: &str) -> Vec<Self> {
+        let contents = read_to_string(path)
+            .expect("Should have been able to read the file");
+        return Self::vec_from_string(contents);
+    }
     pub fn from_ref(token: &Self) -> Self {
         match token {
             Self::Symbol(c) => Self::Symbol(*c),
@@ -161,17 +166,36 @@ enum AbstractSyntaxItem {
     ExpressionEnd,
     NamespaceStart(String),
     NamespaceEnd,
+    Use(Vec<String>),
     Token(Token),
     Variable(Vec<String>),
 } impl AbstractSyntaxItem {
+    pub fn vec_from_file(path: &str) -> Result<Vec<Self>, &'static str> {
+        let tokens = Token::vec_from_file(path);
+        return Self::vec_from_tokens(tokens);
+    }
     pub fn vec_from_tokens(tokens: Vec<Token>) -> Result<Vec<Self>, &'static str> {
         let mut result = vec![];
         let mut variable = vec![];
         let mut is_variable_continue = false;
         let mut is_namespace_start = false;
         let mut is_expression_end = true;
+        let mut is_use_start = false;
         for token in tokens.iter() {
-            if is_namespace_start {
+            if is_use_start {
+                match token {
+                    Token::Identifier(path) => {
+                        variable.push(path.to_string());
+                    },
+                    Token::Symbol(';') => {
+                        result.push(Self::Use(variable));
+                        variable = vec![];
+                        is_use_start = false;
+                    },
+                    _ => return Err("There can only be identifiers after use"),
+                }
+                continue;
+            } else if is_namespace_start {
                 if let Token::Identifier(name) = token {
                     result.push(Self::NamespaceStart(name.to_string()));
                     is_namespace_start = false;
@@ -180,6 +204,13 @@ enum AbstractSyntaxItem {
                 return Err("There can only be an identifier after namespace");
             }
             match token {
+                Token::Keyword(Keyword::Use) => {
+                    if is_expression_end {
+                        is_use_start = true;
+                        continue;
+                    }
+                    return Err("Use can't start in the middle of an expression");
+                }
                 Token::Keyword(Keyword::Namespace) => {
                     if is_expression_end {
                         is_namespace_start = true;
@@ -218,6 +249,7 @@ enum AbstractSyntaxItem {
                         variable.push(String::new());
                     }
                     is_variable_continue = true;
+                    continue;
                 },
                 t => {
                     if is_expression_end {
@@ -231,10 +263,11 @@ enum AbstractSyntaxItem {
                     result.push(Self::Token(Token::from_ref(t)));
                 },
             }
+            is_variable_continue = false;
         }
         return Ok(result);
     }
-    pub fn get_strings(list: &Vec<Self>) -> Vec<String> {
+    pub fn get_strings(list: &Vec<Self>, ext_namespace: String) -> Result<Vec<String>, &'static str> {
         let mut result = vec![]; 
         let mut namespaces = vec![];
         let mut expression = vec![];
@@ -248,14 +281,27 @@ enum AbstractSyntaxItem {
                 Self::Variable(i) => {
                     expression.push("A_{{".to_string());
                     if !i.get(0).unwrap().is_empty() {
+                        expression.push(ext_namespace.to_string());
                         expression.push(namespaces.join(""));
                     }
                     expression.push(i.join(""));
                     expression.push("}}".to_string());
                 },
+                Self::Use(path) => {
+                    let full_path = format!("./{}.ds", path.join("/")); 
+                    match &Self::vec_from_file(full_path.as_str()) {
+                        Ok(list) => match Self::get_strings(list, format!("{ext_namespace}{}", namespaces.join(""))) {
+                            Ok(strings) => for i in strings {
+                                result.push(i);
+                            },
+                            Err(e) => return Err(e),
+                        },
+                        Err(e) => return Err(e),
+                    }
+                },
             }
         }
-        return result;
+        return Ok(result);
     }
 }
 
@@ -271,25 +317,25 @@ struct GraphingCalculator {
         }
     }
     pub fn from_file(path: &str) -> Result<Self, &'static str> {
-        let contents = read_to_string(path)
-            .expect("Should have been able to read the file");
-        let tokens = Token::vec_from_string(contents);
-        match AbstractSyntaxItem::vec_from_tokens(tokens) {
+        match AbstractSyntaxItem::vec_from_file(path) {
             Ok(list) => Ok(Self::new(list)),
             Err(e) => Err(e),
         }
     }
-    pub fn print_html(&self) {
+    pub fn print_html(&self) -> Result<(), &'static str> {
         println!(r"<script src='{}'></script>
 <div id='calculator' style='width: 600px; height: 400px;'></div>
 <script>
     var elt = document.getElementById('calculator');
     var calculator = Desmos.GraphingCalculator(elt);", self.get_api_link());
-        let temp = AbstractSyntaxItem::get_strings(&self.expressions);
-        for (index, item) in temp.iter().enumerate() {
-            println!("    calculator.setExpression({{id: '{index}', latex: '{item}'}});");
+        match AbstractSyntaxItem::get_strings(&self.expressions, String::new()) {
+            Ok(strings) => for (index, item) in strings.iter().enumerate() {
+                println!("    calculator.setExpression({{id: '{index}', latex: '{item}'}});");
+            },
+            Err(e) => return Err(e),
         }
         println!("</script>");
+        return Ok(());
     }
     fn get_api_link(&self) -> String {
         let url_start = "https://www.desmos.com/api/v1.7/calculator.js?apiKey=";
@@ -299,5 +345,11 @@ struct GraphingCalculator {
 
 
 fn main() {
-    GraphingCalculator::from_file("test_tokenizer.ds").unwrap().print_html();
+    match GraphingCalculator::from_file("test_tokenizer.ds") {
+        Ok(gc) => match gc.print_html() {
+             Ok(()) => (),
+             Err(e) => println!("\033[31m{e}\033[0m"),
+        },
+        Err(e) => println!("\033[31m{e}\033[0m"),
+    }
 }
