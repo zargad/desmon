@@ -181,6 +181,7 @@ enum AbstractSyntaxItem {
         let mut is_namespace_start = false;
         let mut is_expression_end = true;
         let mut is_use_start = false;
+        let mut namespace_level = 0;
         for token in tokens.iter() {
             if is_use_start {
                 match token {
@@ -212,6 +213,7 @@ enum AbstractSyntaxItem {
                     return Err("Use can't start in the middle of an expression");
                 }
                 Token::Keyword(Keyword::Namespace) => {
+                    namespace_level += 1;
                     if is_expression_end {
                         is_namespace_start = true;
                         continue;
@@ -219,6 +221,10 @@ enum AbstractSyntaxItem {
                     return Err("Namespace can't start in the middle of an expression");
                 },
                 Token::Keyword(Keyword::End) => { 
+                    if namespace_level == 0 {
+                        return Err("Can't have more ends than namespaces");
+                    }
+                    namespace_level -= 1;
                     if is_expression_end {
                         result.push(Self::NamespaceEnd);
                         continue;
@@ -237,6 +243,9 @@ enum AbstractSyntaxItem {
                     variable.push(i.to_string());
                 },
                 Token::Symbol(';') => {
+                    if is_expression_end {
+                        return Err("A semicolon can't have another semicolon after it");
+                    }
                     if !variable.is_empty() {
                         result.push(Self::Variable(variable));
                         variable = vec![];
@@ -264,6 +273,9 @@ enum AbstractSyntaxItem {
                 },
             }
             is_variable_continue = false;
+        }
+        if namespace_level != 0 {
+            return Err("Can't have more namespaces than ends");
         }
         return Ok(result);
     }
@@ -348,8 +360,8 @@ fn main() {
     match GraphingCalculator::from_file("test_tokenizer.ds") {
         Ok(gc) => match gc.print_html() {
              Ok(()) => (),
-             Err(e) => println!("\033[31m{e}\033[0m"),
+             Err(e) => println!("\x1b[31m{e}\x1b[0m"),
         },
-        Err(e) => println!("\033[31m{e}\033[0m"),
+        Err(e) => println!("\x1b[31m{e}\x1b[0m"),
     }
 }
