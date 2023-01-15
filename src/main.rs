@@ -138,14 +138,14 @@ enum AbstractSyntaxItem {
             }
             match token {
                 Token::Keyword(Keyword::Namespace) => {
-                    if !is_expression_end {
+                    if is_expression_end {
                         is_namespace_start = true;
                         continue;
                     }
                     return Err("Namespace can't start in the middle of an expression");
                 },
                 Token::Keyword(Keyword::End) => { 
-                    if !is_expression_end {
+                    if is_expression_end {
                         result.push(Self::NamespaceEnd);
                         continue;
                     }
