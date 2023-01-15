@@ -1,5 +1,32 @@
-use std::fs::{File, read_to_string};
-use std::io::{prelude::*, BufReader};
+use std::fs::{/*File, */read_to_string};
+// use std::io::{prelude::*, BufReader};
+
+/*
+pub fn preprocess(string: String) -> String {
+    let mut result = vec![];
+    let mut comment_suspicion = false;
+    let mut is_in_comment = false;
+    let mut inline_comment_level = 0;
+    for c in string.chars() {
+        if inline_comment_level
+        match c {
+            '/' => {
+                if comment_suspicion {
+                    is_in_comment = true;
+                    comment_suspicion = false;
+                } else {
+                    comment_suspicion = true;
+                }
+            },
+            '*' => {
+                if comment_suspicion {
+                    inline_comment += 1;
+                }
+            }
+        }
+    }
+}
+*/
 
 
 #[derive(Debug,Clone,Copy)]
@@ -42,16 +69,7 @@ enum Token {
         let mut result = vec![];
         let mut last: Option<Self> = None;
         let mut is_after_space = true;
-        let mut is_in_comment = false;
         for c in string.chars() {
-            if c == '\n' {
-                is_in_comment = false;
-            } else if c == '"' {
-                is_in_comment = true;
-            }
-            if is_in_comment {
-                continue;
-            }
             if c.is_whitespace() {
                 is_after_space = true;
                 continue;
@@ -87,6 +105,8 @@ enum Token {
             Self::Symbol(c) => match c {
                 '{' => String::from("\\\\left\\\\{"),
                 '}' => String::from("\\\\right\\\\}"),
+                'X' => ".x".to_string(),
+                'Y' => ".y".to_string(),
                 _ => c.to_string(),
             },
             Self::Identifier(i) => format!("A_{{{}}}", i),
@@ -114,7 +134,8 @@ enum Token {
             Token::Identifier(_) => c.is_alphanumeric(),
             Token::Number(_) => c.is_numeric() || c == '.',
             Token::STDConstant(_) | Token::STDFunction(_) => c.is_alphabetic(),
-            Token::Symbol(_) | Token::Keyword(_) => false,
+            Token::Symbol(s) => *s == '~' && (c == 'Y' || c == 'X'),
+            Token::Keyword(_) => false,
         };
         if is_matching {
             match self {
@@ -124,7 +145,8 @@ enum Token {
                     }
                 },
                 Token::STDConstant(n) | Token::STDFunction(n) => n.push(c),
-                Token::Symbol(_) | Token::Keyword(_) => (),
+                Token::Symbol(s) => *s = c,
+                Token::Keyword(_) => (),
             }
             return true;
         }
