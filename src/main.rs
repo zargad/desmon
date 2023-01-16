@@ -351,11 +351,12 @@ struct GraphingCalculator {
         }
     }
     pub fn print_html(&self, is_print_tokens: bool) -> Result<(), &'static str> {
-        println!(r"<script src='{}'></script>
+        let api_link = self.get_api_link();
+        println!(r"<script src='{api_link}'></script>
 <div id='calculator' style='width: 600px; height: 400px;'></div>
 <script>
     var elt = document.getElementById('calculator');
-    var calculator = Desmos.GraphingCalculator(elt);", self.get_api_link());
+    var calculator = Desmos.GraphingCalculator(elt);");
         match AbstractSyntaxItem::get_strings(&self.expressions, String::new(), is_print_tokens) {
             Ok(strings) => for (index, item) in strings.iter().enumerate() {
                 println!("    calculator.setExpression({{id: '{index}', latex: '{item}'}});");
