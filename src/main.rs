@@ -391,8 +391,10 @@ struct GraphingCalculator {
         let api_link = self.get_api_link();
         let expressions = AbstractSyntaxItem::get_expressions(&self.expressions, String::new(), is_print_tokens)?; 
         println!(r"<!DOCTYPE html>
+<html style='height: 100%;'>
+<body style='height: 100%; margin: 0%'>
 <script src='{api_link}'></script>
-<div id='calculator' style='width: 600px; height: 400px;'></div>
+<div id='calculator' style='width: 100%; height: 100%;'></div>
 <script>
     var elt = document.getElementById('calculator');
     var calculator = Desmos.GraphingCalculator(elt);");
@@ -405,6 +407,8 @@ struct GraphingCalculator {
             println!("    calculator.setExpression({{id: '{index}', latex: '{item}', {options}}});");
         }
         println!("</script>");
+        println!("</body>");
+        println!("</html>");
         Ok(())
     }
     fn get_api_link(&self) -> String {
