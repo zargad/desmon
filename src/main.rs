@@ -42,12 +42,16 @@ enum Keyword {
     Namespace,
     Use,
     End,
+    Visual,
+    Hidden,
 } impl Keyword {
     pub fn from_string(string: String) -> Option<Self> {
         match string.as_str() {
             "Namespace" => Some(Self::Namespace),
             "Use" => Some(Self::Use),
             "End" => Some(Self::End),
+            "Visual" => Some(Self::Visual),
+            "Hidden" => Some(Self::Hidden),
             _ => None,
         }
     }
@@ -120,6 +124,7 @@ enum Token {
                 '}' => String::from("\\\\right\\\\}"),
                 'X' => ".x".to_string(),
                 'Y' => ".y".to_string(),
+                '~' => "...".to_string(),
                 _ => c.to_string(),
             },
             Self::Identifier(i) => format!("A_{{{}}}", i),
@@ -170,6 +175,8 @@ enum Token {
 
 #[derive(Debug)]
 enum AbstractSyntaxItem {
+    Visual,
+    Hidden,
     ExpressionStart,
     ExpressionEnd,
     NamespaceStart(String),
@@ -216,6 +223,20 @@ enum AbstractSyntaxItem {
                 return Err("There can only be an identifier after namespace");
             }
             match token {
+                Token::Keyword(Keyword::Visual) => {
+                    if is_expression_end {
+                        result.push(Self::Visual);
+                        continue;
+                    }
+                    return Err("Visual can't be in the middle of an expression");
+                }
+                Token::Keyword(Keyword::Hidden) => {
+                    if is_expression_end {
+                        result.push(Self::Hidden);
+                        continue;
+                    }
+                    return Err("Hidden can't be in the middle of an expression");
+                }
                 Token::Keyword(Keyword::Use) => {
                     if is_expression_end {
                         is_use_start = true;
@@ -290,14 +311,17 @@ enum AbstractSyntaxItem {
         }
         Ok(result)
     }
-    pub fn get_strings(list: &Vec<Self>, ext_namespace: String, is_print_tokens: bool) -> Result<Vec<String>, &'static str> {
+    pub fn get_expressions(list: &Vec<Self>, ext_namespace: String, is_print_tokens: bool) -> Result<Vec<(String, bool)>, &'static str> {
         let mut result = vec![]; 
         let mut namespaces = vec![];
         let mut expression = vec![];
+        let mut is_hidden = true;
         for i in list {
             match i {
+                Self::Visual => is_hidden = false,
+                Self::Hidden => is_hidden = true,
                 Self::ExpressionStart => expression = vec![],
-                Self::ExpressionEnd => result.push(expression.join("")),
+                Self::ExpressionEnd => result.push((expression.join(""), is_hidden)),
                 Self::NamespaceStart(n) => namespaces.push(n.to_string()),
                 Self::NamespaceEnd => _ = namespaces.pop(),
                 Self::Token(t) => expression.push(t.to_latex()),
@@ -313,7 +337,7 @@ enum AbstractSyntaxItem {
                 Self::Use(path) => {
                     let full_path = format!("./{}.ds", path.join("/")); 
                     match &Self::vec_from_file(full_path.as_str(), is_print_tokens) {
-                        Ok(list) => match Self::get_strings(list, format!("{ext_namespace}{}", namespaces.join("")), is_print_tokens) {
+                        Ok(list) => match Self::get_expressions(list, format!("{ext_namespace}{}", namespaces.join("")), is_print_tokens) {
                             Ok(strings) => for i in strings {
                                 result.push(i);
                             },
@@ -357,9 +381,9 @@ struct GraphingCalculator {
 <script>
     var elt = document.getElementById('calculator');
     var calculator = Desmos.GraphingCalculator(elt);");
-        match AbstractSyntaxItem::get_strings(&self.expressions, String::new(), is_print_tokens) {
-            Ok(strings) => for (index, item) in strings.iter().enumerate() {
-                println!("    calculator.setExpression({{id: '{index}', latex: '{item}'}});");
+        match AbstractSyntaxItem::get_expressions(&self.expressions, String::new(), is_print_tokens) {
+            Ok(expressions) => for (index, (item, is_hidden)) in expressions.iter().enumerate() {
+                println!("    calculator.setExpression({{id: '{index}', latex: '{item}', hidden: '{is_hidden}'}});");
             },
             Err(e) => return Err(e),
         }
