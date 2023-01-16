@@ -390,7 +390,8 @@ struct GraphingCalculator {
     pub fn print_html(&self, is_print_tokens: bool) -> Result<(), &'static str> {
         let api_link = self.get_api_link();
         let expressions = AbstractSyntaxItem::get_expressions(&self.expressions, String::new(), is_print_tokens)?; 
-        println!(r"<script src='{api_link}'></script>
+        println!(r"<!DOCTYPE html>
+<script src='{api_link}'></script>
 <div id='calculator' style='width: 600px; height: 400px;'></div>
 <script>
     var elt = document.getElementById('calculator');
