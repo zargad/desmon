@@ -1,3 +1,4 @@
+use std::env;
 use std::fs::{/*File, */read_to_string};
 // use std::io::{prelude::*, BufReader};
 
@@ -58,7 +59,7 @@ enum Token {
     pub fn vec_from_file(path: &str) -> Vec<Self> {
         let contents = read_to_string(path)
             .expect("Should have been able to read the file");
-        return Self::vec_from_string(contents);
+        Self::vec_from_string(contents)
     }
     pub fn from_ref(token: &Self) -> Self {
         match token {
@@ -101,11 +102,11 @@ enum Token {
                     l = Self::Keyword(k);
                 }
             }
-            result.push(l);
+            result.push(l)
         }
-        return result;
+        result
     }
-    pub fn to_string(&self) -> String {
+    pub fn to_latex(&self) -> String {
         match self {
             Self::Symbol(c) => match c {
                 '{' => String::from("\\\\left\\\\{"),
@@ -155,7 +156,7 @@ enum Token {
             }
             return true;
         }
-        return false;
+        false
     }
 }
 
@@ -277,7 +278,7 @@ enum AbstractSyntaxItem {
         if namespace_level != 0 {
             return Err("Can't have more namespaces than ends");
         }
-        return Ok(result);
+        Ok(result)
     }
     pub fn get_strings(list: &Vec<Self>, ext_namespace: String) -> Result<Vec<String>, &'static str> {
         let mut result = vec![]; 
@@ -289,7 +290,7 @@ enum AbstractSyntaxItem {
                 Self::ExpressionEnd => result.push(expression.join("")),
                 Self::NamespaceStart(n) => namespaces.push(n.to_string()),
                 Self::NamespaceEnd => _ = namespaces.pop(),
-                Self::Token(t) => expression.push(t.to_string()),
+                Self::Token(t) => expression.push(t.to_latex()),
                 Self::Variable(i) => {
                     expression.push("A_{{".to_string());
                     if !i.get(0).unwrap().is_empty() {
@@ -313,7 +314,7 @@ enum AbstractSyntaxItem {
                 },
             }
         }
-        return Ok(result);
+        Ok(result)
     }
 }
 
@@ -324,7 +325,7 @@ struct GraphingCalculator {
 } impl GraphingCalculator {
     pub fn new(expressions: Vec<AbstractSyntaxItem>) -> Self {
         Self {
-            expressions: expressions,
+            expressions,
             api_key: "dcb31709b452b1cf9dc26972add0fda6".to_string(),
         }
     }
@@ -347,21 +348,26 @@ struct GraphingCalculator {
             Err(e) => return Err(e),
         }
         println!("</script>");
-        return Ok(());
+        Ok(())
     }
     fn get_api_link(&self) -> String {
         let url_start = "https://www.desmos.com/api/v1.7/calculator.js?apiKey=";
-        format!("{url_start}{}", self.api_key).to_string()
+        format!("{url_start}{}", self.api_key)
     }
 }
 
 
 fn main() {
-    match GraphingCalculator::from_file("test_tokenizer.ds") {
-        Ok(gc) => match gc.print_html() {
-             Ok(()) => (),
-             Err(e) => println!("\x1b[31m{e}\x1b[0m"),
-        },
-        Err(e) => println!("\x1b[31m{e}\x1b[0m"),
+    let args: Vec<String> = env::args().collect();
+    if let Some(file_path) = &args.get(1) {
+        match GraphingCalculator::from_file(file_path) {
+            Ok(gc) => match gc.print_html() {
+                 Ok(()) => (),
+                 Err(e) => println!("\x1b[31m{e}\x1b[0m"),
+            },
+            Err(e) => println!("\x1b[31m{e}\x1b[0m"),
+        }
+    } else {
+        println!("\x1b[33mNo file specified\x1b[0m");
     }
 }
