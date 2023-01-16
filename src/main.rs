@@ -2,32 +2,39 @@ use std::env;
 use std::fs::{/*File, */read_to_string};
 // use std::io::{prelude::*, BufReader};
 
-/*
+
 pub fn preprocess(string: String) -> String {
-    let mut result = vec![];
-    let mut comment_suspicion = false;
+    let mut result = String::new();
+    let mut last = ' ';
     let mut is_in_comment = false;
     let mut inline_comment_level = 0;
     for c in string.chars() {
-        if inline_comment_level
         match c {
-            '/' => {
-                if comment_suspicion {
-                    is_in_comment = true;
-                    comment_suspicion = false;
-                } else {
-                    comment_suspicion = true;
-                }
+            '/' => if !is_in_comment && inline_comment_level == 0 && last == '/' {
+                result.pop();
+                is_in_comment = true;
+            } else if inline_comment_level != 0 && last == '*' {
+                inline_comment_level -= 1;
+                continue;
             },
-            '*' => {
-                if comment_suspicion {
-                    inline_comment += 1;
+            '*' => if !is_in_comment &&  last == '/' {
+                if inline_comment_level == 0 {
+                    result.pop();
                 }
-            }
+                inline_comment_level += 1;
+            },
+            '\n' => {
+                is_in_comment = false;
+            },
+            _ => (),
         }
+        if !is_in_comment && inline_comment_level == 0 {
+            result.push(c);
+        }
+        last = c;
     }
+    result
 }
-*/
 
 
 #[derive(Debug,Clone,Copy)]
@@ -59,7 +66,7 @@ enum Token {
     pub fn vec_from_file(path: &str) -> Vec<Self> {
         let contents = read_to_string(path)
             .expect("Should have been able to read the file");
-        Self::vec_from_string(contents)
+        Self::vec_from_string(preprocess(contents))
     }
     pub fn from_ref(token: &Self) -> Self {
         match token {
@@ -171,8 +178,11 @@ enum AbstractSyntaxItem {
     Token(Token),
     Variable(Vec<String>),
 } impl AbstractSyntaxItem {
-    pub fn vec_from_file(path: &str) -> Result<Vec<Self>, &'static str> {
+    pub fn vec_from_file(path: &str, is_print_tokens: bool) -> Result<Vec<Self>, &'static str> {
         let tokens = Token::vec_from_file(path);
+        if is_print_tokens {
+            println!("{tokens:?}");
+        }
         return Self::vec_from_tokens(tokens);
     }
     pub fn vec_from_tokens(tokens: Vec<Token>) -> Result<Vec<Self>, &'static str> {
@@ -280,7 +290,7 @@ enum AbstractSyntaxItem {
         }
         Ok(result)
     }
-    pub fn get_strings(list: &Vec<Self>, ext_namespace: String) -> Result<Vec<String>, &'static str> {
+    pub fn get_strings(list: &Vec<Self>, ext_namespace: String, is_print_tokens: bool) -> Result<Vec<String>, &'static str> {
         let mut result = vec![]; 
         let mut namespaces = vec![];
         let mut expression = vec![];
@@ -302,8 +312,8 @@ enum AbstractSyntaxItem {
                 },
                 Self::Use(path) => {
                     let full_path = format!("./{}.ds", path.join("/")); 
-                    match &Self::vec_from_file(full_path.as_str()) {
-                        Ok(list) => match Self::get_strings(list, format!("{ext_namespace}{}", namespaces.join(""))) {
+                    match &Self::vec_from_file(full_path.as_str(), is_print_tokens) {
+                        Ok(list) => match Self::get_strings(list, format!("{ext_namespace}{}", namespaces.join("")), is_print_tokens) {
                             Ok(strings) => for i in strings {
                                 result.push(i);
                             },
@@ -329,19 +339,24 @@ struct GraphingCalculator {
             api_key: "dcb31709b452b1cf9dc26972add0fda6".to_string(),
         }
     }
-    pub fn from_file(path: &str) -> Result<Self, &'static str> {
-        match AbstractSyntaxItem::vec_from_file(path) {
-            Ok(list) => Ok(Self::new(list)),
+    pub fn from_file(path: &str, is_print_tokens: bool, is_print_ast: bool) -> Result<Self, &'static str> {
+        match AbstractSyntaxItem::vec_from_file(path, is_print_tokens) {
+            Ok(list) => {
+                if is_print_ast {
+                    println!("{list:?}");
+                }
+                Ok(Self::new(list))
+            },
             Err(e) => Err(e),
         }
     }
-    pub fn print_html(&self) -> Result<(), &'static str> {
+    pub fn print_html(&self, is_print_tokens: bool) -> Result<(), &'static str> {
         println!(r"<script src='{}'></script>
 <div id='calculator' style='width: 600px; height: 400px;'></div>
 <script>
     var elt = document.getElementById('calculator');
     var calculator = Desmos.GraphingCalculator(elt);", self.get_api_link());
-        match AbstractSyntaxItem::get_strings(&self.expressions, String::new()) {
+        match AbstractSyntaxItem::get_strings(&self.expressions, String::new(), is_print_tokens) {
             Ok(strings) => for (index, item) in strings.iter().enumerate() {
                 println!("    calculator.setExpression({{id: '{index}', latex: '{item}'}});");
             },
@@ -359,9 +374,15 @@ struct GraphingCalculator {
 
 fn main() {
     let args: Vec<String> = env::args().collect();
+    let mut is_print_tokens = false;
+    let mut is_print_ast = false;
+    for arg in &args {
+        is_print_tokens = is_print_tokens || arg == "--tokens";
+        is_print_ast = is_print_ast || arg == "--ast";
+    }
     if let Some(file_path) = &args.get(1) {
-        match GraphingCalculator::from_file(file_path) {
-            Ok(gc) => match gc.print_html() {
+        match GraphingCalculator::from_file(file_path, is_print_tokens, is_print_ast) {
+            Ok(gc) => match gc.print_html(is_print_tokens) {
                  Ok(()) => (),
                  Err(e) => println!("\x1b[31m{e}\x1b[0m"),
             },
