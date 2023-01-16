@@ -151,9 +151,9 @@ enum Token {
         let is_matching = match self {
             Token::Identifier(_) => c.is_alphanumeric(),
             Token::Number(_) => c.is_numeric() || c == '.',
-            Token::STDConstant(_) | Token::STDFunction(_) => c.is_alphabetic(),
-            Token::Symbol(s) => *s == '~' && (c == 'Y' || c == 'X'),
-            Token::Keyword(_) => false,
+            Token::STDConstant(_) | Token::STDFunction(_) | Token::Symbol('@') => c.is_alphabetic(),
+            Token::Symbol('~') => c == 'Y' || c == 'X',
+            Token::Keyword(_) | Token::Symbol(_) => false,
         };
         if is_matching {
             match self {
@@ -163,7 +163,15 @@ enum Token {
                     }
                 },
                 Token::STDConstant(n) | Token::STDFunction(n) => n.push(c),
-                Token::Symbol(s) => *s = c,
+                Token::Symbol(s) => {
+                    if *s == '~' {
+                        *s = c; 
+                    } else {
+                        for i in c.to_lowercase() {
+                            *s = i;
+                        }
+                    }
+                },
                 Token::Keyword(_) => (),
             }
             return true;
@@ -264,6 +272,10 @@ enum AbstractSyntaxItem {
                     return Err("Namespace can't end in the middle of an expression");
                 },
                 Token::Identifier(i) => {
+                    if is_expression_end {
+                        result.push(Self::ExpressionStart);
+                        is_expression_end = false;
+                    }
                     if !variable.is_empty() && !is_variable_continue {
                         if is_expression_end {
                             result.push(Self::ExpressionStart);
@@ -286,6 +298,10 @@ enum AbstractSyntaxItem {
                     is_expression_end = true;
                 },
                 Token::Symbol('.') => {
+                    if is_expression_end {
+                        result.push(Self::ExpressionStart);
+                        is_expression_end = false;
+                    }
                     if variable.is_empty() {
                         variable.push(String::new());
                     }
@@ -326,6 +342,7 @@ enum AbstractSyntaxItem {
                 Self::NamespaceEnd => _ = namespaces.pop(),
                 Self::Token(t) => expression.push(t.to_latex()),
                 Self::Variable(i) => {
+                    //println!("{i:?}");
                     expression.push("A_{{".to_string());
                     if !i.get(0).unwrap().is_empty() {
                         expression.push(ext_namespace.to_string());
@@ -333,19 +350,16 @@ enum AbstractSyntaxItem {
                     }
                     expression.push(i.join(""));
                     expression.push("}}".to_string());
+                    //println!("{expression:?}");
                 },
                 Self::Use(path) => {
                     let full_path = format!("./{}.ds", path.join("/")); 
-                    match &Self::vec_from_file(full_path.as_str(), is_print_tokens) {
-                        Ok(list) => match Self::get_expressions(list, format!("{ext_namespace}{}", namespaces.join("")), is_print_tokens) {
-                            Ok(strings) => for i in strings {
-                                result.push(i);
-                            },
-                            Err(e) => return Err(e),
-                        },
-                        Err(e) => return Err(e),
+                    let list = &Self::vec_from_file(full_path.as_str(), is_print_tokens)?;
+                    let strings = Self::get_expressions(list, format!("{ext_namespace}{}", namespaces.join("")), is_print_tokens)?;
+                    for i in strings {
+                        result.push(i);
                     }
-                },
+                }
             }
         }
         Ok(result)
@@ -364,28 +378,22 @@ struct GraphingCalculator {
         }
     }
     pub fn from_file(path: &str, is_print_tokens: bool, is_print_ast: bool) -> Result<Self, &'static str> {
-        match AbstractSyntaxItem::vec_from_file(path, is_print_tokens) {
-            Ok(list) => {
-                if is_print_ast {
-                    println!("{list:?}");
-                }
-                Ok(Self::new(list))
-            },
-            Err(e) => Err(e),
+        let list = AbstractSyntaxItem::vec_from_file(path, is_print_tokens)?;
+        if is_print_ast {
+            println!("{list:?}");
         }
+        Ok(Self::new(list))
     }
     pub fn print_html(&self, is_print_tokens: bool) -> Result<(), &'static str> {
         let api_link = self.get_api_link();
+        let expressions = AbstractSyntaxItem::get_expressions(&self.expressions, String::new(), is_print_tokens)?; 
         println!(r"<script src='{api_link}'></script>
 <div id='calculator' style='width: 600px; height: 400px;'></div>
 <script>
     var elt = document.getElementById('calculator');
     var calculator = Desmos.GraphingCalculator(elt);");
-        match AbstractSyntaxItem::get_expressions(&self.expressions, String::new(), is_print_tokens) {
-            Ok(expressions) => for (index, (item, is_hidden)) in expressions.iter().enumerate() {
-                println!("    calculator.setExpression({{id: '{index}', latex: '{item}', hidden: '{is_hidden}'}});");
-            },
-            Err(e) => return Err(e),
+        for (index, (item, is_hidden)) in expressions.iter().enumerate() {
+            println!("    calculator.setExpression({{id: '{index}', latex: '{item}', hidden: {is_hidden}}});");
         }
         println!("</script>");
         Ok(())
@@ -399,21 +407,17 @@ struct GraphingCalculator {
 
 fn main() {
     let args: Vec<String> = env::args().collect();
-    let mut is_print_tokens = false;
-    let mut is_print_ast = false;
-    for arg in &args {
-        is_print_tokens = is_print_tokens || arg == "--tokens";
-        is_print_ast = is_print_ast || arg == "--ast";
-    }
+    let is_print_tokens = args.contains(&"--tokens".to_string());
+    let is_print_ast = args.contains(&"--ast".to_string());
     if let Some(file_path) = &args.get(1) {
         match GraphingCalculator::from_file(file_path, is_print_tokens, is_print_ast) {
             Ok(gc) => match gc.print_html(is_print_tokens) {
                  Ok(()) => (),
-                 Err(e) => println!("\x1b[31m{e}\x1b[0m"),
+                 Err(e) => eprintln!("\x1b[31m{e}\x1b[0m"),
             },
-            Err(e) => println!("\x1b[31m{e}\x1b[0m"),
+            Err(e) => eprintln!("\x1b[31m{e}\x1b[0m"),
         }
     } else {
-        println!("\x1b[33mNo file specified\x1b[0m");
+        eprintln!("\x1b[33mNo file specified\x1b[0m");
     }
 }
