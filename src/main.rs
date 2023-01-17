@@ -1,13 +1,19 @@
 use std::env;
 use std::fs::{/*File, */read_to_string};
 // use std::io::{prelude::*, BufReader};
+use std::collections::HashMap;
 
 
-pub fn preprocess(string: String) -> String {
+pub fn preprocess(string: String) -> Result<String, &'static str> {
     let mut result = String::new();
     let mut last = ' ';
+    let mut is_in_definition = false;
     let mut is_in_comment = false;
     let mut inline_comment_level = 0;
+    let mut is_definition_start = false;
+    let mut definitions = HashMap::<String, String>::new();
+    let mut key = String::new();
+    let mut value = String::new();
     for c in string.chars() {
         match c {
             '/' => if !is_in_comment && inline_comment_level == 0 && last == '/' {
@@ -15,6 +21,12 @@ pub fn preprocess(string: String) -> String {
                 is_in_comment = true;
             } else if inline_comment_level != 0 && last == '*' {
                 inline_comment_level -= 1;
+                continue;
+            },
+            '!' => if !is_in_comment && inline_comment_level == 0 && last  == '/' {
+                result.pop();
+                is_in_definition = true;
+                is_definition_start = true;
                 continue;
             },
             '*' => if !is_in_comment &&  last == '/' {
@@ -25,15 +37,44 @@ pub fn preprocess(string: String) -> String {
             },
             '\n' => {
                 is_in_comment = false;
+                if is_in_definition {
+                    definitions.insert(key, value);
+                    key = String::new();
+                    value = String::new();
+                    is_in_definition = false;
+                }
             },
             _ => (),
         }
         if !is_in_comment && inline_comment_level == 0 {
-            result.push(c);
+            if is_in_definition {
+                if is_definition_start {
+                    if c.is_alphanumeric() {
+                        key.push(c);
+                    } else if c == '=' {
+                        is_definition_start = false;
+                    } else {
+                        if let Some(val) = definitions.get(&key) {
+                            result.push_str(val.as_str());
+                        } else {
+                            eprintln!("{key}");
+                            eprintln!("{definitions:?}");
+                            return Err("Use of undefined definition");
+                        }
+                        key = String::new();
+                        is_in_definition = false;
+                        result.push(c);
+                    }
+                } else {
+                    value.push(c);
+                }
+            } else {
+                result.push(c);
+            }
         }
         last = c;
     }
-    result
+    Ok(result)
 }
 
 
@@ -66,10 +107,14 @@ enum Token {
     STDFunction(String),
     STDConstant(String),
 } impl Token {
-    pub fn vec_from_file(path: &str) -> Vec<Self> {
+    pub fn vec_from_file(path: &str, print_preprocess: bool) -> Result<Vec<Self>, &'static str> {
         let contents = read_to_string(path)
             .expect("Should have been able to read the file");
-        Self::vec_from_string(preprocess(contents))
+        let preprocess_string = preprocess(contents)?;
+        if print_preprocess {
+            eprintln!("{preprocess_string:?}");
+        }
+        Ok(Self::vec_from_string(preprocess_string))
     }
     pub fn from_ref(token: &Self) -> Self {
         match token {
@@ -195,10 +240,10 @@ enum AbstractSyntaxItem {
     Token(Token),
     Variable(Vec<String>),
 } impl AbstractSyntaxItem {
-    pub fn vec_from_file(path: &str, is_print_tokens: bool) -> Result<Vec<Self>, &'static str> {
-        let tokens = Token::vec_from_file(path);
-        if is_print_tokens {
-            println!("{tokens:?}");
+    pub fn vec_from_file(path: &str, print_tokens: bool, print_preprocess: bool) -> Result<Vec<Self>, &'static str> {
+        let tokens = Token::vec_from_file(path, print_preprocess)?;
+        if print_tokens {
+            eprintln!("{tokens:?}");
         }
         return Self::vec_from_tokens(tokens);
     }
@@ -330,7 +375,7 @@ enum AbstractSyntaxItem {
         }
         Ok(result)
     }
-    pub fn get_expressions(list: &Vec<Self>, ext_namespace: String, is_print_tokens: bool) -> Result<Vec<(String, Option<String>)>, &'static str> {
+    pub fn get_expressions(list: &Vec<Self>, ext_namespace: String, print_tokens: bool, print_ast: bool, print_preprocess: bool) -> Result<Vec<(String, Option<String>)>, &'static str> {
         let mut result = vec![]; 
         let mut namespaces = vec![];
         let mut expression = vec![];
@@ -357,8 +402,11 @@ enum AbstractSyntaxItem {
                 },
                 Self::Use(path) => {
                     let full_path = format!("./{}.ds", path.join("/")); 
-                    let list = &Self::vec_from_file(full_path.as_str(), is_print_tokens)?;
-                    let strings = Self::get_expressions(list, format!("{ext_namespace}{}", namespaces.join("")), is_print_tokens)?;
+                    let list = &Self::vec_from_file(full_path.as_str(), print_tokens, print_preprocess)?;
+                    if print_ast {
+                        eprintln!("{list:?}");
+                    }
+                    let strings = Self::get_expressions(list, format!("{ext_namespace}{}", namespaces.join("")), print_tokens, print_ast, print_preprocess)?;
                     for i in strings {
                         result.push(i);
                     }
@@ -380,16 +428,16 @@ struct GraphingCalculator {
             api_key: "dcb31709b452b1cf9dc26972add0fda6".to_string(),
         }
     }
-    pub fn from_file(path: &str, is_print_tokens: bool, is_print_ast: bool) -> Result<Self, &'static str> {
-        let list = AbstractSyntaxItem::vec_from_file(path, is_print_tokens)?;
-        if is_print_ast {
-            println!("{list:?}");
+    pub fn from_file(path: &str, print_tokens: bool, print_ast: bool, print_preprocess: bool) -> Result<Self, &'static str> {
+        let list = AbstractSyntaxItem::vec_from_file(path, print_tokens, print_preprocess)?;
+        if print_ast {
+            eprintln!("{list:?}");
         }
         Ok(Self::new(list))
     }
-    pub fn print_html(&self, is_print_tokens: bool) -> Result<(), &'static str> {
+    pub fn print_html(&self, print_tokens: bool, print_ast: bool, print_preprocess: bool) -> Result<(), &'static str> {
         let api_link = self.get_api_link();
-        let expressions = AbstractSyntaxItem::get_expressions(&self.expressions, String::new(), is_print_tokens)?; 
+        let expressions = AbstractSyntaxItem::get_expressions(&self.expressions, String::new(), print_tokens, print_ast, print_preprocess)?; 
         println!(r"<!DOCTYPE html>
 <html style='height: 100%;'>
 <body style='height: 100%; margin: 0%'>
@@ -420,11 +468,12 @@ struct GraphingCalculator {
 
 fn main() {
     let args: Vec<String> = env::args().collect();
-    let is_print_tokens = args.contains(&"--tokens".to_string());
-    let is_print_ast = args.contains(&"--ast".to_string());
+    let print_tokens = args.contains(&"--tokens".to_string());
+    let print_ast = args.contains(&"--ast".to_string());
+    let print_preprocess = args.contains(&"--preprocess".to_string());
     if let Some(file_path) = &args.get(1) {
-        match GraphingCalculator::from_file(file_path, is_print_tokens, is_print_ast) {
-            Ok(gc) => match gc.print_html(is_print_tokens) {
+        match GraphingCalculator::from_file(file_path, print_tokens, print_ast, print_preprocess) {
+            Ok(gc) => match gc.print_html(print_tokens, print_ast, print_preprocess) {
                  Ok(()) => (),
                  Err(e) => eprintln!("\x1b[31m{e}\x1b[0m"),
             },
