@@ -11,8 +11,10 @@ pub fn preprocess(string: String) -> Result<String, &'static str> {
     let mut is_in_comment = false;
     let mut inline_comment_level = 0;
     let mut is_definition_start = false;
+    let mut is_recursive_definition = false;
     let mut definitions = HashMap::<String, String>::new();
     let mut key = String::new();
+    let mut recursive_key = String::new();
     let mut value = String::new();
     for c in string.chars() {
         match c {
@@ -38,6 +40,17 @@ pub fn preprocess(string: String) -> Result<String, &'static str> {
             '\n' => {
                 is_in_comment = false;
                 if is_in_definition {
+                    if is_recursive_definition {
+                        if let Some(val) = definitions.get(&recursive_key) {
+                            value.push_str(val.as_str());
+                            recursive_key = String::new();
+                            is_recursive_definition = false;
+                        } else {
+                            eprintln!("{definitions:#?}");
+                            eprintln!("rec {recursive_key}");
+                            return Err("Use of undefined definition");
+                        }
+                    }
                     definitions.insert(key, value);
                     key = String::new();
                     value = String::new();
@@ -53,18 +66,32 @@ pub fn preprocess(string: String) -> Result<String, &'static str> {
                         key.push(c);
                     } else if c == '=' {
                         is_definition_start = false;
-                    } else {
-                        if let Some(val) = definitions.get(&key) {
-                            result.push_str(val.as_str());
-                        } else {
-                            eprintln!("{key}");
-                            eprintln!("{definitions:?}");
-                            return Err("Use of undefined definition");
-                        }
+                    } else if let Some(val) = definitions.get(&key) {
+                        result.push_str(val.as_str());
                         key = String::new();
                         is_in_definition = false;
                         result.push(c);
+                    } else {
+                        eprintln!("{definitions:#?}");
+                        eprintln!("reg {key}");
+                        return Err("Use of undefined definition");
                     }
+                } else if is_recursive_definition {
+                    if c.is_alphanumeric() {
+                        recursive_key.push(c);
+                    } else if let Some(val) = definitions.get(&recursive_key) {
+                        value.push_str(val.as_str());
+                        recursive_key = String::new();
+                        is_recursive_definition = false;
+                        value.push(c);
+                    } else {
+                        eprintln!("{definitions:#?}");
+                        eprintln!("rec {recursive_key}");
+                        return Err("Use of undefined definition");
+                    }
+                } else if last == '/' && c == '!' {
+                    value.pop();
+                    is_recursive_definition = true;
                 } else {
                     value.push(c);
                 }
