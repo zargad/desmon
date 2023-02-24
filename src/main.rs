@@ -1,108 +1,7 @@
-use std::env;
-use std::fs::{/*File, */read_to_string};
+// use std::env;
+// use std::fs::{/*File, */read_to_string};
 // use std::io::{prelude::*, BufReader};
-use std::collections::HashMap;
-
-
-pub fn preprocess(string: String) -> Result<String, &'static str> {
-    let mut result = String::new();
-    let mut last = ' ';
-    let mut is_in_definition = false;
-    let mut is_in_comment = false;
-    let mut inline_comment_level = 0;
-    let mut is_definition_start = false;
-    let mut is_recursive_definition = false;
-    let mut definitions = HashMap::<String, String>::new();
-    let mut key = String::new();
-    let mut recursive_key = String::new();
-    let mut value = String::new();
-    for c in string.chars() {
-        match c {
-            '/' => if !is_in_comment && inline_comment_level == 0 && last == '/' {
-                result.pop();
-                is_in_comment = true;
-            } else if inline_comment_level != 0 && last == '*' {
-                inline_comment_level -= 1;
-                continue;
-            },
-            '!' => if !is_in_comment && inline_comment_level == 0 && last  == '/' {
-                result.pop();
-                is_in_definition = true;
-                is_definition_start = true;
-                continue;
-            },
-            '*' => if !is_in_comment &&  last == '/' {
-                if inline_comment_level == 0 {
-                    result.pop();
-                }
-                inline_comment_level += 1;
-            },
-            '\n' => {
-                is_in_comment = false;
-                if is_in_definition {
-                    if is_recursive_definition {
-                        if let Some(val) = definitions.get(&recursive_key) {
-                            value.push_str(val.as_str());
-                            recursive_key = String::new();
-                            is_recursive_definition = false;
-                        } else {
-                            eprintln!("{definitions:#?}");
-                            eprintln!("rec {recursive_key}");
-                            return Err("Use of undefined definition");
-                        }
-                    }
-                    definitions.insert(key, value);
-                    key = String::new();
-                    value = String::new();
-                    is_in_definition = false;
-                }
-            },
-            _ => (),
-        }
-        if !is_in_comment && inline_comment_level == 0 {
-            if is_in_definition {
-                if is_definition_start {
-                    if c.is_alphanumeric() {
-                        key.push(c);
-                    } else if c == '=' {
-                        is_definition_start = false;
-                    } else if let Some(val) = definitions.get(&key) {
-                        result.push_str(val.as_str());
-                        key = String::new();
-                        is_in_definition = false;
-                        result.push(c);
-                    } else {
-                        eprintln!("{definitions:#?}");
-                        eprintln!("reg {key}");
-                        return Err("Use of undefined definition");
-                    }
-                } else if is_recursive_definition {
-                    if c.is_alphanumeric() {
-                        recursive_key.push(c);
-                    } else if let Some(val) = definitions.get(&recursive_key) {
-                        value.push_str(val.as_str());
-                        recursive_key = String::new();
-                        is_recursive_definition = false;
-                        value.push(c);
-                    } else {
-                        eprintln!("{definitions:#?}");
-                        eprintln!("rec {recursive_key}");
-                        return Err("Use of undefined definition");
-                    }
-                } else if last == '/' && c == '!' {
-                    value.pop();
-                    is_recursive_definition = true;
-                } else {
-                    value.push(c);
-                }
-            } else {
-                result.push(c);
-            }
-        }
-        last = c;
-    }
-    Ok(result)
-}
+use std::iter::Peekable;
 
 
 #[derive(Debug,Clone,Copy)]
@@ -126,21 +25,24 @@ enum Keyword {
 
 #[derive(Debug)]
 enum Token {
+    Whitespace,
+    Newline,
     Symbol(char),
-    Identifier(String),
+    Identifier(Vec<String>),
     Number(String),
     Keyword(Keyword),
-    Color(String),
-    STDFunction(String),
-    STDConstant(String),
 } impl Token {
+    /*
     pub fn vec_from_file(path: &str, print_preprocess: bool) -> Result<Vec<Self>, &'static str> {
         let contents = read_to_string(path)
             .expect("Should have been able to read the file");
+        let preprocess_string = contents;
+        /*
         let preprocess_string = preprocess(contents)?;
         if print_preprocess {
             eprintln!("{preprocess_string:?}");
         }
+        */
         Ok(Self::vec_from_string(preprocess_string))
     }
     pub fn from_ref(token: &Self) -> Self {
@@ -151,9 +53,94 @@ enum Token {
             Self::Keyword(k) => Self::Keyword(*k),
             Self::STDConstant(p) => Self::STDConstant(p.to_string()),
             Self::STDFunction(p) => Self::STDFunction(p.to_string()),
-            Self::Color(c) => Self::Color(c.to_string()),
         }
     }
+    */
+    pub fn vec_from_chars<I>(chars: &mut Peekable<I>) -> Result<Vec<Self>, &'static str>
+    where I: Iterator<Item = char>
+    {
+        let mut result = vec![];
+        while let Some(&c) = chars.peek() {
+            if c == '\n' {
+                result.push(Self::Newline);
+                chars.next();
+            } else if c.is_whitespace() {
+                result.push(Self::whitespace_from_chars(chars)?);
+            } else if c.is_alphabetic() || c == '_' {
+                result.push(Self::identifier_from_chars(chars)?);
+            } else if c.is_numeric() {
+                result.push(Self::number_from_chars(chars)?);
+            } else {
+                result.push(Self::Symbol(c));
+                chars.next();
+            }
+        }
+        return Ok(result);
+    }
+    pub fn whitespace_from_chars<I>(chars: &mut Peekable<I>) -> Result<Self, &'static str>
+    where I: Iterator<Item = char>
+    {
+        while let Some(&c) = chars.peek() {
+            if c != '\n' && c.is_whitespace() {
+                chars.next();
+            } else {
+                return Ok(Self::Whitespace);
+            }
+        }
+        return Ok(Self::Whitespace);
+    }
+    pub fn identifier_from_chars<I>(chars: &mut Peekable<I>) -> Result<Self, &'static str>
+    where I: Iterator<Item = char>
+    {
+        let mut value = vec![];
+        let mut last = String::new();
+        while let Some(&c) = chars.peek() {
+            if last.is_empty() {
+                if c.is_alphabetic() || c == '_' {
+                    last.push(c);
+                    chars.next();
+                } else {
+                    return Err("Identifier starts with a letter or '_'");
+                }
+            } else if c.is_alphanumeric() || c == '_' {
+                last.push(c);
+                chars.next();
+            } else {
+                value.push(last);
+                last = String::new();
+                if c == '.' {
+                    chars.next();
+                } else {
+                    return Ok(Self::Identifier(value));
+                }
+            }
+        }
+        value.push(last);
+        return Ok(Self::Identifier(value));
+    }
+    pub fn number_from_chars<I>(chars: &mut Peekable<I>) -> Result<Self, &'static str>
+    where I: Iterator<Item = char>
+    {
+        let mut value = String::new();
+        let mut is_decimal = false;
+        while let Some(&c) = chars.peek() {
+            if c.is_numeric() {
+                value.push(c);
+                chars.next();
+            } else if c == '.' {
+                if is_decimal {
+                    return Err("Unexpected '.'"); 
+                }
+                value.push(c);
+                chars.next();
+                is_decimal = true;
+            } else {
+                return Ok(Self::Number(value));
+            }
+        }
+        return Ok(Self::Number(value));
+    }
+    /*
     pub fn vec_from_string(string: String) -> Vec<Self> {
         let mut result = vec![];
         let mut last: Option<Self> = None;
@@ -215,15 +202,12 @@ enum Token {
             Token::STDConstant(String::new())
         } else if c == '\\' {
             Token::STDFunction(String::new())
-        } else if c == '#' {
-            Token::Color(String::new())
         } else {
             Token::Symbol(c)
         }
     }
     fn try_push(&mut self, c: char) -> bool {
         let is_matching = match self {
-            Token::Color(_) => c.is_numeric() || ('A'..='F').contains(&c) || ('a'..='f').contains(&c),
             Token::Identifier(_) => c.is_alphanumeric(),
             Token::Number(_) => c.is_numeric() || c == '.',
             Token::STDConstant(_) | Token::STDFunction(_) | Token::Symbol('@') => c.is_alphabetic(),
@@ -233,7 +217,7 @@ enum Token {
         if is_matching {
             match self {
                 Token::Identifier(s) | Token::Number(s) | Token::STDConstant(s) | 
-                Token::STDFunction(s) | Token::Color(s) => {
+                Token::STDFunction(s) => {
                     for i in c.to_lowercase() {
                         s.push(i);
                     }
@@ -253,9 +237,11 @@ enum Token {
         }
         false
     }
+    */
 }
 
 
+/*
 #[derive(Debug)]
 enum AbstractSyntaxItem {
     Visual(String),
@@ -305,11 +291,13 @@ enum AbstractSyntaxItem {
                 }
                 return Err("There can only be an identifier after namespace");
             } else if is_visual_start {
+                /*
                 if let Token::Color(n) = token {
                     result.push(Self::Visual(n.to_string()));
                     is_visual_start = false;
                     continue;
                 }
+                */
                 return Err("There can only be a color after visual");
             }
             match token {
@@ -492,8 +480,10 @@ struct GraphingCalculator {
     }
 }
 
+*/
 
 fn main() {
+    /*
     let args: Vec<String> = env::args().collect();
     let print_tokens = args.contains(&"--tokens".to_string());
     let print_ast = args.contains(&"--ast".to_string());
@@ -509,4 +499,8 @@ fn main() {
     } else {
         eprintln!("\x1b[33mNo file specified\x1b[0m");
     }
+    */
+    let chars = "xor.a37373737 + yor = 3.734757\nlol lol lol";
+    let tokens = Token::vec_from_chars(&mut chars.chars().peekable());
+    println!("{tokens:?}");
 }
