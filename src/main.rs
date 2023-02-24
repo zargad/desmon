@@ -2,24 +2,63 @@
 // use std::fs::{/*File, */read_to_string};
 // use std::io::{prelude::*, BufReader};
 use std::iter::Peekable;
+use std::{thread, time};
 
 
-#[derive(Debug,Clone,Copy)]
-enum Keyword {
-    Namespace,
-    Use,
-    End,
-    Visual,
-} impl Keyword {
-    pub fn from_string(string: String) -> Option<Self> {
-        match string.as_str() {
-            "Namespace" => Some(Self::Namespace),
-            "Use" => Some(Self::Use),
-            "End" => Some(Self::End),
-            "Visual" => Some(Self::Visual),
-            _ => None,
+#[derive(Debug)]
+struct Tree {
+    value: char,
+    children: Vec<Self>,
+} impl Tree {
+    pub fn from_vec(value: char, vec: Vec<&'static str>) -> Self{
+        let mut result = Self::from_value(value);
+        for i in vec {
+            result.set(i.to_string());
         }
+        result
     }
+    pub fn from_value(value: char) -> Self {
+        Self {value, children: vec![]}
+    }
+    pub fn set(&mut self, string: String) -> &mut Self {
+        let mut chars = string.chars();
+        if let Some(first) = chars.next() {
+            let tail = chars.collect();
+            for child in &mut self.children {
+                if first == child.value {
+                    child.set(tail);
+                    return self;
+                }
+            }
+            let mut temp = Self::from_value(first);
+            temp.set(tail);
+            self.children.push(temp);
+        }
+        self
+    }
+    pub fn contains(&self, string: String) -> bool {
+        let mut chars = string.chars();
+        if let Some(first) = chars.next() {
+            let tail = chars.collect();
+            for child in &self.children {
+                if first == child.value {
+                    return child.contains(tail);
+                }
+            }
+            return false;
+        }
+        true
+    }
+    /*
+    pub fn get(&self, c: char) -> Option<Self> {
+        for child in self.children.iter() {
+            if c == child.value {
+                return Some(child);
+            }
+        }
+        return None;
+    }
+    */
 }
 
 
@@ -27,10 +66,10 @@ enum Keyword {
 enum Token {
     Whitespace,
     Newline,
-    Symbol(char),
-    Identifier(Vec<String>),
+    Symbol(String),
+    Identifier(String),
     Number(String),
-    Keyword(Keyword),
+    Keyword(String),
 } impl Token {
     /*
     pub fn vec_from_file(path: &str, print_preprocess: bool) -> Result<Vec<Self>, &'static str> {
@@ -62,20 +101,42 @@ enum Token {
         let mut result = vec![];
         while let Some(&c) = chars.peek() {
             if c == '\n' {
-                result.push(Self::Newline);
-                chars.next();
+                result.push(Self::newline_from_chars(chars)?);
             } else if c.is_whitespace() {
                 result.push(Self::whitespace_from_chars(chars)?);
             } else if c.is_alphabetic() || c == '_' {
-                result.push(Self::identifier_from_chars(chars)?);
+                result.push(Self::identifier_or_keyword_from_chars(chars)?);
             } else if c.is_numeric() {
                 result.push(Self::number_from_chars(chars)?);
             } else {
-                result.push(Self::Symbol(c));
+                result.push(Self::Symbol(c.to_string()));
                 chars.next();
             }
         }
         return Ok(result);
+    }
+    /*
+    pub fn symbol_from_chars<I>(chars: &mut Peekable<I>) -> Result<Self, &'static str>
+    where I: Iterator<Item = char>
+    {
+        let mut value = String::new();
+        let valid_symbols = vec!["-"];
+        while let Some(&c) = chars.peek() {
+            
+        }
+    }
+    */
+    pub fn newline_from_chars<I>(chars: &mut Peekable<I>) -> Result<Self, &'static str>
+    where I: Iterator<Item = char>
+    {
+        while let Some(&c) = chars.peek() {
+            if c == '\n' {
+                chars.next();
+            } else {
+                return Ok(Self::Newline);
+            }
+        }
+        return Ok(Self::Newline);
     }
     pub fn whitespace_from_chars<I>(chars: &mut Peekable<I>) -> Result<Self, &'static str>
     where I: Iterator<Item = char>
@@ -89,34 +150,22 @@ enum Token {
         }
         return Ok(Self::Whitespace);
     }
-    pub fn identifier_from_chars<I>(chars: &mut Peekable<I>) -> Result<Self, &'static str>
+    pub fn identifier_or_keyword_from_chars<I>(chars: &mut Peekable<I>) -> Result<Self, &'static str>
     where I: Iterator<Item = char>
     {
-        let mut value = vec![];
-        let mut last = String::new();
+        let mut value = String::new();
         while let Some(&c) = chars.peek() {
-            if last.is_empty() {
-                if c.is_alphabetic() || c == '_' {
-                    last.push(c);
-                    chars.next();
-                } else {
-                    return Err("Identifier starts with a letter or '_'");
-                }
-            } else if c.is_alphanumeric() || c == '_' {
-                last.push(c);
+            if c.is_alphanumeric() || c == '_' {
+                value.push(c);
                 chars.next();
             } else {
-                value.push(last);
-                last = String::new();
-                if c == '.' {
-                    chars.next();
-                } else {
-                    return Ok(Self::Identifier(value));
-                }
+                break;
             }
         }
-        value.push(last);
-        return Ok(Self::Identifier(value));
+        Ok(match value.as_str() {
+            "namespace" | "visual" => Self::Keyword(value),
+            _ => Self::Identifier(value),
+        })
     }
     pub fn number_from_chars<I>(chars: &mut Peekable<I>) -> Result<Self, &'static str>
     where I: Iterator<Item = char>
@@ -500,7 +549,22 @@ fn main() {
         eprintln!("\x1b[33mNo file specified\x1b[0m");
     }
     */
-    let chars = "xor.a37373737 + yor = 3.734757\nlol lol lol";
+    let chars = "namespace lol { x = y + 1; }";
     let tokens = Token::vec_from_chars(&mut chars.chars().peekable());
     println!("{tokens:?}");
+    /*
+    let mut tree = Tree::from_vec(' ', 
+        vec![
+            "++",
+            "+=",
+            "-",
+            "-=",
+            "->",
+            "...",
+            "*=",
+            "**",
+        ]
+    );
+    println!("{}", tree.contains("..".to_string()));
+    */
 }
