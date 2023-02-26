@@ -1,19 +1,22 @@
 use std::iter::Peekable;
 
 
-mod lexer;
+pub mod lexer;
 use crate::ast::lexer::{Token, Keyword, Symbol};
 
 
 #[derive(Debug)]
 enum ExpressionItem {
-    Variable(bool, Vec<String>),
+    Variable(Option<Keyword>, Vec<String>),
     Other(Token),
 } impl ExpressionItem {
-    pub fn vec_from_tokens<I>(tokens: &mut Peekable<I>) -> Result<Vec<Self>, &'static str>
-    where I: Iterator<Item = Token>
+    pub fn vec_from_tokens<'a, I>(tokens: &mut Peekable<I>) -> Result<Vec<Self>, &'static str>
+    where I: Iterator<Item = &'a Token>
     {
         let mut result = vec![];
+        if let Some(Token::Symbol(Symbol::Semicolon)) = tokens.peek() {
+            return Err("Unexpected semicolon (blank expression)");
+        }
         while let Some(token) = tokens.peek() {
             match token {
                 Token::Symbol(Symbol::Semicolon) => {
@@ -21,29 +24,51 @@ enum ExpressionItem {
                     return Ok(result);
                 },
                 Token::Keyword(Keyword::This | Keyword::Std) | Token::Identifier(_) => result.push(Self::variable_from_tokens(tokens)?),
-                Token::Symbol(_) | Token::Number(_) => result.push(Self::Other(Token::from_ref(token))),
-                _ => return Err("Unexpected token in an expression"),
+                Token::Symbol(_) | Token::Number(_) => {
+                    result.push(Self::Other(Token::from_ref(token)));
+                    tokens.next();
+                },
+                Token::Whitespace | Token::Newline => {
+                    tokens.next();
+                },
+                _ => {
+                    println!("{:?}", tokens.peek());
+                    return Err("Unexpected token in an expression");
+                },
             }
         }
         Err("Expression needs to end with ';'")
     }
-    pub fn variable_from_tokens<I>(tokens: &mut Peekable<I>) -> Result<Self, &'static str>
-    where I: Iterator<Item = Token>
+    pub fn variable_from_tokens<'a, I>(tokens: &mut Peekable<I>) -> Result<Self, &'static str>
+    where I: Iterator<Item = &'a Token>
     {
-        todo!();
-        /*
-        while let Some(&token) = tokens.peek() {
+        let mut identifiers: Vec<String> = vec![];
+        let mut prefix = None;
+        if let Some(token) = tokens.next() {
             match token {
-                Token::Symbol(Symbol::Semicolon) => {
-                    tokens.next();
-                    return Ok(result);
+                Token::Keyword(keyword) => match keyword {
+                    Keyword::This | Keyword::Std => {
+                        prefix = Some(keyword);
+                    },
+                    _ => return Err("Unexpected keyword"),
                 },
-                Token::Keyword(Keyword::This) | Token::Identifier(_) => result.push(Self::variable_from_tokens(tokens)),
-                Token::Symbol(_) | Token::Number(_) => result.push(Self::Other(token)),
-                _ => return Err("Unexpected token in an expression"),
+                Token::Identifier(name) => identifiers.push(name.to_string()),
+                _ => return Err("Unexpected token"),
             }
         }
-        */
+        while let Some(token) = tokens.peek() {
+            if let Token::Symbol(Symbol::Dot) = token {
+                tokens.next();
+                if let Some(Token::Identifier(name)) = tokens.next() {
+                    identifiers.push(name.to_string());
+                } else {
+                    return Err("Variable can not end with '.'");
+                }
+            } else {
+                break;
+            }
+        }
+        Ok(Self::Variable(prefix.copied(), identifiers))
     }
 }
 
@@ -62,8 +87,8 @@ pub enum AbstractSyntaxItem {
         return Self::vec_from_tokens(tokens);
     }
     */
-    pub fn vec_from_tokens<I>(tokens: &mut Peekable<I>, is_namespace: bool) -> Result<Vec<Self>, &'static str>
-    where I: Iterator<Item = Token>
+    pub fn vec_from_tokens<'a, I>(tokens: &mut Peekable<I>, is_namespace: bool) -> Result<Vec<Self>, &'static str>
+    where I: Iterator<Item = &'a Token>
     {
         let mut result = vec![];
         while let Some(token) = tokens.peek() {
@@ -79,6 +104,9 @@ pub enum AbstractSyntaxItem {
                     }
                     return Err("'}' without an opening '{'");
                 },
+                Token::Whitespace | Token::Newline => {
+                    tokens.next();
+                },
                 _ => {
                     result.push(Self::expression_from_tokens(tokens)?);
                 },
@@ -86,19 +114,30 @@ pub enum AbstractSyntaxItem {
         }
         Ok(result)
     }
-    pub fn namespace_from_tokens<I>(tokens: &mut Peekable<I>) -> Result<Self, &'static str>
-    where I: Iterator<Item = Token>
+    pub fn namespace_from_tokens<'a, I>(tokens: &mut Peekable<I>) -> Result<Self, &'static str>
+    where I: Iterator<Item = &'a Token>
     {
+        if let Some(Token::Whitespace) = tokens.next() {} else {
+            return Err("Whitespace is required after 'namespace'");
+        }
         if let Some(Token::Identifier(name)) = tokens.next() {
-            if let Some(Token::Symbol(Symbol::LeftParen)) = tokens.next() {
-                return Ok(Self::Namespace(name, Self::vec_from_tokens(tokens, true)?));
+            if let Some(&Token::Whitespace) = tokens.peek() {
+                tokens.next();
+            } else if let Some(&Token::Symbol(Symbol::LeftCurly)) = tokens.peek() {
+                tokens.next();
+                return Ok(Self::Namespace(name.to_string(), Self::vec_from_tokens(tokens, true)?));
+            } else {
+                return Err("Unexpected token");
             }
-            return Err("'{' is required after namespace declaration");
+            if let Some(Token::Symbol(Symbol::LeftCurly)) = tokens.next() {
+                return Ok(Self::Namespace(name.to_string(), Self::vec_from_tokens(tokens, true)?));
+            }
+            return Err("'{' is required after a namespace declaration");
         }
         Err("Namespace name should be an identifier")
     }
-    pub fn expression_from_tokens<I>(tokens: &mut Peekable<I>) -> Result<Self, &'static str>
-    where I: Iterator<Item = Token>
+    pub fn expression_from_tokens<'a, I>(tokens: &mut Peekable<I>) -> Result<Self, &'static str>
+    where I: Iterator<Item = &'a Token>
     {
         Ok(Self::Expression(ExpressionItem::vec_from_tokens(tokens)?))
     }
