@@ -28,7 +28,7 @@ enum ExpressionItem {
                     result.push(Self::Other(Token::from_ref(token)));
                     tokens.next();
                 },
-                Token::Whitespace | Token::Newline => {
+                Token::Whitespace(_) => {
                     tokens.next();
                 },
                 _ => {
@@ -70,6 +70,9 @@ enum ExpressionItem {
         }
         Ok(Self::Variable(prefix.copied(), identifiers))
     }
+    pub fn vec_to_string(vec: Vec<Self>, namespaces: Vec<String>) -> String {
+        todo!();       
+    }
 }
 
 
@@ -77,6 +80,7 @@ enum ExpressionItem {
 pub enum AbstractSyntaxItem {
     Expression(Vec<ExpressionItem>),
     Namespace(String, Vec<Self>),
+    Text(String),
 } impl AbstractSyntaxItem {
     /*
     pub fn vec_from_file(path: &str, print_tokens: bool, print_preprocess: bool) -> Result<Vec<Self>, &'static str> {
@@ -104,7 +108,11 @@ pub enum AbstractSyntaxItem {
                     }
                     return Err("'}' without an opening '{'");
                 },
-                Token::Whitespace | Token::Newline => {
+                Token::Text(t) => {
+                    tokens.next();
+                    result.push(Self::Text(t.to_string()));
+                }
+                Token::Whitespace(_) => {
                     tokens.next();
                 },
                 _ => {
@@ -117,11 +125,11 @@ pub enum AbstractSyntaxItem {
     pub fn namespace_from_tokens<'a, I>(tokens: &mut Peekable<I>) -> Result<Self, &'static str>
     where I: Iterator<Item = &'a Token>
     {
-        if let Some(Token::Whitespace) = tokens.next() {} else {
+        if let Some(Token::Whitespace(false)) = tokens.next() {} else {
             return Err("Whitespace is required after 'namespace'");
         }
         if let Some(Token::Identifier(name)) = tokens.next() {
-            if let Some(&Token::Whitespace) = tokens.peek() {
+            if let Some(&Token::Whitespace(_)) = tokens.peek() {
                 tokens.next();
             } else if let Some(&Token::Symbol(Symbol::LeftCurly)) = tokens.peek() {
                 tokens.next();
@@ -141,6 +149,25 @@ pub enum AbstractSyntaxItem {
     {
         Ok(Self::Expression(ExpressionItem::vec_from_tokens(tokens)?))
     }
+    /*
+    pub fn to_strings_vec(&self, namespaces: &mut Vec<String>) -> Vec<String> {
+        match self {
+            Self::Expression(items) => {
+                let temp = vec![ExpressionItem::vec_to_string(items.to_vec(), namespaces.to_vec())];
+                return temp;
+            },
+            Self::Namespace(name, asts) => {
+                namespaces.push(name.to_string());
+                let mut result = vec![];
+                for ast in asts {
+                    result.append(&mut ast.to_strings_vec(namespaces));
+                }
+                namespaces.pop();
+                return result;
+            },
+        }
+    }
+    */
     /*
     pub fn get_expressions(list: &Vec<Self>, ext_namespace: String, print_tokens: bool, print_ast: bool, print_preprocess: bool) -> Result<Vec<(String, Option<String>)>, &'static str> {
         let mut result = vec![]; 

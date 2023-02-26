@@ -46,12 +46,7 @@ struct SymbolTree {
         self.name.ok_or("Invalid symbol")
     }
     pub fn get(&self, c: char) -> Option<&Self> {
-        for child in &self.children {
-            if c == child.value {
-                return Some(child);
-            }
-        }
-        return None;
+        self.children.iter().find(|&child| c == child.value)
     }
 }
 
@@ -133,11 +128,11 @@ pub enum Keyword {
 
 #[derive(Debug)]
 pub enum Token {
-    Whitespace,
-    Newline,
+    Whitespace(bool),
     Symbol(Symbol),
     Identifier(String),
     Number(String),
+    Text(String),
     Keyword(Keyword),
 } impl Token {
     /*
@@ -159,9 +154,9 @@ pub enum Token {
             Self::Symbol(c) => Self::Symbol(*c),
             Self::Identifier(i) => Self::Identifier(i.to_string()),
             Self::Number(n) => Self::Number(n.to_string()),
+            Self::Text(t) => Self::Text(t.to_string()),
             Self::Keyword(k) => Self::Keyword(*k),
-            Self::Whitespace => Self::Whitespace,
-            Self::Newline => Self::Newline,
+            Self::Whitespace(b) => Self::Whitespace(*b),
         }
     }
     pub fn vec_from_chars<I>(chars: &mut Peekable<I>) -> Result<Vec<Self>, &'static str>
@@ -169,48 +164,65 @@ pub enum Token {
     {
         let mut result = vec![];
         while let Some(&c) = chars.peek() {
-            if c == '\n' {
-                result.push(Self::newline_from_chars(chars)?);
-            } else if c.is_whitespace() {
+            if c.is_whitespace() {
                 result.push(Self::whitespace_from_chars(chars)?);
             } else if c.is_alphabetic() || c == '_' {
                 result.push(Self::identifier_or_keyword_from_chars(chars)?);
             } else if c.is_numeric() {
                 result.push(Self::number_from_chars(chars)?);
+            } else if c == '#' {
+                result.push(Self::text_from_chars(chars)?);
             } else {
                 result.push(Self::symbol_from_chars(chars)?);
             }
         }
         Ok(result)
     }
-    pub fn symbol_from_chars<I>(chars: &mut Peekable<I>) -> Result<Self, &'static str>
+    pub fn text_from_chars<I>(chars: &mut Peekable<I>) -> Result<Self, &'static str>
     where I: Iterator<Item = char>
     {
-        Ok(Token::Symbol(Symbol::from_chars(chars)?))
-    }
-    pub fn newline_from_chars<I>(chars: &mut Peekable<I>) -> Result<Self, &'static str>
-    where I: Iterator<Item = char>
-    {
+        let mut value = String::new();
+        if let Some('#') = chars.next() {} else {
+            return Err("Text starts with '#'");
+        }
         while let Some(&c) = chars.peek() {
-            if c == '\n' {
+            if c.is_whitespace() {
+                if c == '\n' {
+                    return Err("Text can not be empty");
+                }
                 chars.next();
             } else {
                 break;
             }
         }
-        Ok(Self::Newline)
+        while let Some(&c) = chars.peek() {
+            if c == '\n' {
+                break;
+            } else {
+                value.push(c);
+                chars.next();
+            }
+        }
+        Ok(Self::Text(value))
+    }
+    pub fn symbol_from_chars<I>(chars: &mut Peekable<I>) -> Result<Self, &'static str>
+    where I: Iterator<Item = char>
+    {
+        Ok(Token::Symbol(Symbol::from_chars(chars)?))
     }
     pub fn whitespace_from_chars<I>(chars: &mut Peekable<I>) -> Result<Self, &'static str>
     where I: Iterator<Item = char>
     {
+        let mut value = false;
         while let Some(&c) = chars.peek() {
-            if c != '\n' && c.is_whitespace() {
+            if c.is_whitespace() {
+                value = value || c == '\n';
                 chars.next();
             } else {
                 break; 
             }
         }
-        Ok(Self::Whitespace)
+        Ok(Self::Whitespace(value))
     }
     pub fn identifier_or_keyword_from_chars<I>(chars: &mut Peekable<I>) -> Result<Self, &'static str>
     where I: Iterator<Item = char>
