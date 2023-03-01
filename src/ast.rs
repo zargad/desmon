@@ -1,4 +1,5 @@
 use std::iter::Peekable;
+use std::collections::HashMap;
 
 
 pub mod lexer;
@@ -70,8 +71,19 @@ enum ExpressionItem {
         }
         Ok(Self::Variable(prefix.copied(), identifiers))
     }
-    pub fn vec_to_string(vec: Vec<Self>, namespaces: Vec<String>) -> String {
-        todo!();       
+    pub fn get_variable_name(&self, namespaces: Vec<String>) -> Option<Vec<String>> {
+        match self {
+            Self::Variable(Some(Keyword::This), identifiers) => {
+                let mut result = namespaces.to_vec();
+                result.append(&mut identifiers.to_vec());
+                return Some(result);
+            },
+            Self::Variable(None, identifiers) => Some(identifiers.to_vec()),
+            _ => None,
+        }
+    }
+    pub fn vec_to_latex(vec: Vec<Self>, namespaces: Vec<String>) -> String {
+        todo!();
     }
 }
 
@@ -91,6 +103,26 @@ pub enum AbstractSyntaxItem {
         return Self::vec_from_tokens(tokens);
     }
     */
+    pub fn get_variable_counts(&self, result: &mut HashMap<Vec<String>, u32>, namespaces: &Vec<String>) {
+        match self {
+            Self::Expression(items) => for i in items {
+                if let Some(name) = i.get_variable_name(namespaces.to_vec()) {
+                    result
+                        .entry(name)
+                        .and_modify(|count| *count += 1)
+                        .or_insert(1);
+                }
+            },
+            Self::Namespace(name, items) => {
+                let names = &mut namespaces.to_vec();
+                names.push(name.to_string());
+                for i in items {
+                    i.get_variable_counts(result, names);
+                }
+            },
+            _ => (),
+        }
+    }
     pub fn vec_from_tokens<'a, I>(tokens: &mut Peekable<I>, is_namespace: bool) -> Result<Vec<Self>, &'static str>
     where I: Iterator<Item = &'a Token>
     {
@@ -168,46 +200,67 @@ pub enum AbstractSyntaxItem {
         }
     }
     */
-    /*
-    pub fn get_expressions(list: &Vec<Self>, ext_namespace: String, print_tokens: bool, print_ast: bool, print_preprocess: bool) -> Result<Vec<(String, Option<String>)>, &'static str> {
-        let mut result = vec![]; 
-        let mut namespaces = vec![];
-        let mut expression = vec![];
-        let mut color = None;
-        for i in list {
-            match i {
-                Self::Visual(c) => color = Some(c.to_string()),
-                Self::ExpressionStart => expression = vec![],
-                Self::ExpressionEnd => {
-                    result.push((expression.join(""), color));
-                    color = None;
-                },
-                Self::NamespaceStart(n) => namespaces.push(n.to_string()),
-                Self::NamespaceEnd => _ = namespaces.pop(),
-                Self::Token(t) => expression.push(t.to_latex()),
-                Self::Variable(i) => {
-                    expression.push("A_{{".to_string());
-                    if !i.get(0).unwrap().is_empty() {
-                        expression.push(ext_namespace.to_string());
-                        expression.push(namespaces.join(""));
-                    }
-                    expression.push(i.join(""));
-                    expression.push("}}".to_string());
-                },
-                Self::Use(path) => {
-                    let full_path = format!("./{}.ds", path.join("/")); 
-                    let list = &Self::vec_from_file(full_path.as_str(), print_tokens, print_preprocess)?;
-                    if print_ast {
-                        eprintln!("{list:?}");
-                    }
-                    let strings = Self::get_expressions(list, format!("{ext_namespace}{}", namespaces.join("")), print_tokens, print_ast, print_preprocess)?;
-                    for i in strings {
-                        result.push(i);
-                    }
-                }
-            }
+}
+
+
+pub type AbstractSyntaxTree = Vec<AbstractSyntaxItem>;
+
+
+pub trait AbstractSyntaxTreeTrait {
+    fn from_tokens<'a, I>(tokens: &mut Peekable<I>, is_namespace: bool) -> Result<Self, &'static str>
+    where I: Iterator<Item = &'a Token>, Self: Sized;
+    fn fill_from_tokens<'a, I>(&mut self, tokens: &mut Peekable<I>, is_namespace: bool) -> Result<(), &'static str>
+    where I: Iterator<Item = &'a Token>, Self: Sized;
+    fn get_variable_ids(&self) -> HashMap<Vec<String>, usize>;
+}
+
+
+impl AbstractSyntaxTreeTrait for AbstractSyntaxTree {
+    fn get_variable_ids(&self) -> HashMap<Vec<String>, usize> {
+        let mut counts = HashMap::new();
+        for i in self {
+            i.get_variable_counts(&mut counts, &vec![]);
         }
+        let mut hash_vec: Vec<(&Vec<String>, &u32)> = counts.iter().collect();
+        hash_vec.sort_by(|a, b| b.1.cmp(&a.1));
+        let mut result = HashMap::new();
+        for (index, (item, _)) in hash_vec.iter().enumerate() {
+            result.insert(item.to_vec(), index);
+        }
+        result
+    }
+    fn from_tokens<'a, I>(tokens: &mut Peekable<I>, is_namespace: bool) -> Result<Self, &'static str>
+    where I: Iterator<Item = &'a Token>
+    {
+        let mut result = vec![];
+        result.fill_from_tokens(tokens, is_namespace)?;
         Ok(result)
     }
-    */
+    fn fill_from_tokens<'a, I>(&mut self, tokens: &mut Peekable<I>, is_namespace: bool) -> Result<(), &'static str>
+    where I: Iterator<Item = &'a Token>
+    {
+        type A = AbstractSyntaxItem;
+        while let Some(token) = tokens.peek() {
+            match token {
+                Token::Keyword(Keyword::Namespace) => {
+                    tokens.next();
+                    self.push(A::namespace_from_tokens(tokens)?);
+                },
+                Token::Symbol(Symbol::RightCurly) => {
+                    tokens.next();
+                    if is_namespace {
+                        break;
+                    }
+                    return Err("'}' without an opening '{'");
+                },
+                Token::Text(t) => {
+                    tokens.next();
+                    self.push(A::Text(t.to_string()));
+                }
+                Token::Whitespace(_) => _ = tokens.next(),
+                _ => _ = self.push(A::expression_from_tokens(tokens)?),
+            }
+        }
+        Ok(())
+    }
 }
