@@ -6,9 +6,96 @@ pub mod lexer;
 use crate::ast::lexer::{Token, Keyword, Symbol};
 
 
+/*
+fn latex_from_id(id: usize) -> String {
+    let mut result = String::new();
+    result.push(
+    result
+}
+*/
+
+
+#[derive(Debug)]
+enum Variable {
+    Absolute(Vec<String>),
+    Relative(Vec<String>),
+    Std(String),
+} impl Variable {
+    pub fn std_from_tokens<'a, I>(tokens: &mut Peekable<I>) -> Result<Self, &'static str>
+    where I: Iterator<Item = &'a Token>
+    {
+        if let Some(Token::Keyword(Keyword::Std)) = tokens.next() {
+            if let Some(Token::Symbol(Symbol::Dot)) = tokens.next() {
+                if let Some(Token::Identifier(name)) = tokens.next() {
+                    Ok(Self::Std(name.to_string()))
+                } else {
+                    Err("Variable can not end with '.'")
+                }
+            } else {
+                Err("Unexpected keyword")
+            }
+        } else {
+            Err("Unexpected token")
+        }
+    }
+    pub fn absolute_from_tokens<'a, I>(tokens: &mut Peekable<I>) -> Result<Self, &'static str>
+    where I: Iterator<Item = &'a Token>
+    {
+        Ok(Self::Absolute(Self::identifiers_from_tokens(tokens)?))
+    }
+    pub fn relative_from_tokens<'a, I>(tokens: &mut Peekable<I>) -> Result<Self, &'static str>
+    where I: Iterator<Item = &'a Token>
+    {
+        if let Some(Token::Keyword(Keyword::This)) = tokens.next() {
+            if let Some(Token::Symbol(Symbol::Dot)) = tokens.next() {
+                Ok(Self::Relative(Self::identifiers_from_tokens(tokens)?))
+            } else {
+                Err("Unexpected keyword")
+            }
+        } else {
+            Err("Unexpected token")
+        }
+    }
+    pub fn get_name(&self, namespaces: Vec<String>) -> Option<Vec<String>> {
+        match self {
+            Self::Relative(identifiers) => {
+                let mut result = namespaces.to_vec();
+                result.append(&mut identifiers.to_vec());
+                Some(result)
+            },
+            Self::Absolute(identifiers) => Some(identifiers.to_vec()),
+            _ => None,
+        }
+    }
+    fn identifiers_from_tokens<'a, I>(tokens: &mut Peekable<I>) -> Result<Vec<String>, &'static str>
+    where I: Iterator<Item = &'a Token>
+    {
+        let mut identifiers: Vec<String> = vec![];
+        while let Some(token) = tokens.peek() {
+            if let Token::Whitespace(_) = token {
+                tokens.next();
+            }
+            if let Some(Token::Identifier(name)) = tokens.next() {
+                identifiers.push(name.to_string());
+                if let Some(Token::Whitespace(_)) = tokens.peek() {
+                    tokens.next();
+                }
+                if let Some(Token::Symbol(Symbol::Dot)) = tokens.peek() {
+                    tokens.next();
+                } else {
+                    break;
+                }
+            } else {
+                return Err("Expected identifier");
+            }
+        }
+        Ok(identifiers)
+    }
+}
+
 #[derive(Debug)]
 enum ExpressionItem {
-    Variable(Option<Keyword>, Vec<String>),
+    Variable(Variable),
     Other(Token),
 } impl ExpressionItem {
     pub fn vec_from_tokens<'a, I>(tokens: &mut Peekable<I>) -> Result<Vec<Self>, &'static str>
@@ -29,9 +116,7 @@ enum ExpressionItem {
                     result.push(Self::Other(Token::from_ref(token)));
                     tokens.next();
                 },
-                Token::Whitespace(_) => {
-                    tokens.next();
-                },
+                Token::Whitespace(_) => { tokens.next(); },
                 _ => {
                     println!("{:?}", tokens.peek());
                     return Err("Unexpected token in an expression");
@@ -43,48 +128,37 @@ enum ExpressionItem {
     pub fn variable_from_tokens<'a, I>(tokens: &mut Peekable<I>) -> Result<Self, &'static str>
     where I: Iterator<Item = &'a Token>
     {
-        let mut identifiers: Vec<String> = vec![];
-        let mut prefix = None;
-        if let Some(token) = tokens.next() {
-            match token {
-                Token::Keyword(keyword) => match keyword {
-                    Keyword::This | Keyword::Std => {
-                        prefix = Some(keyword);
-                    },
-                    _ => return Err("Unexpected keyword"),
-                },
-                Token::Identifier(name) => identifiers.push(name.to_string()),
-                _ => return Err("Unexpected token"),
-            }
-        }
-        while let Some(token) = tokens.peek() {
-            if let Token::Symbol(Symbol::Dot) = token {
-                tokens.next();
-                if let Some(Token::Identifier(name)) = tokens.next() {
-                    identifiers.push(name.to_string());
-                } else {
-                    return Err("Variable can not end with '.'");
+        if let Some(&token) = tokens.peek() {
+            return Ok(Self::Variable(
+                match token {
+                    Token::Keyword(Keyword::This) => Variable::relative_from_tokens(tokens)?,
+                    Token::Keyword(Keyword::Std) => Variable::std_from_tokens(tokens)?,
+                    Token::Identifier(_) => Variable::absolute_from_tokens(tokens)?,
+                    _ => Err("Unexpected token")?,
                 }
-            } else {
-                break;
-            }
+            ));
         }
-        Ok(Self::Variable(prefix.copied(), identifiers))
+        Err("Empty variable")
     }
     pub fn get_variable_name(&self, namespaces: Vec<String>) -> Option<Vec<String>> {
-        match self {
-            Self::Variable(Some(Keyword::This), identifiers) => {
-                let mut result = namespaces.to_vec();
-                result.append(&mut identifiers.to_vec());
-                return Some(result);
-            },
-            Self::Variable(None, identifiers) => Some(identifiers.to_vec()),
-            _ => None,
+        if let Self::Variable(v) = self {
+            v.get_name(namespaces)
+        } else {
+            None
         }
     }
-    pub fn vec_to_latex(vec: Vec<Self>, namespaces: Vec<String>) -> String {
-        todo!();
+    /*
+    fn vec_to_latex(vec: Vec<Self>, namespaces: Vec<String>, ids: HashMap<Vec<String>, usize>) -> String {
+        let mut result = String::new();
+        for i in vec {
+            if let Some(name) = i.get_variable_name(namespaces) {
+                let id = ids.get(name).expect("Variable not in ids HashMap");
+                result.push();
+            }
+        }
+        result
     }
+    */
 }
 
 
@@ -222,7 +296,7 @@ impl AbstractSyntaxTreeTrait for AbstractSyntaxTree {
             i.get_variable_counts(&mut counts, &vec![]);
         }
         let mut hash_vec: Vec<(&Vec<String>, &u32)> = counts.iter().collect();
-        hash_vec.sort_by(|a, b| b.1.cmp(&a.1));
+        hash_vec.sort_by(|a, b| b.1.cmp(a.1));
         let mut result = HashMap::new();
         for (index, (item, _)) in hash_vec.iter().enumerate() {
             result.insert(item.to_vec(), index);
@@ -257,8 +331,8 @@ impl AbstractSyntaxTreeTrait for AbstractSyntaxTree {
                     tokens.next();
                     self.push(A::Text(t.to_string()));
                 }
-                Token::Whitespace(_) => _ = tokens.next(),
-                _ => _ = self.push(A::expression_from_tokens(tokens)?),
+                Token::Whitespace(_) => { tokens.next(); },
+                _ => { self.push(A::expression_from_tokens(tokens)?); },
             }
         }
         Ok(())
