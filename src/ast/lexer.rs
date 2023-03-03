@@ -242,7 +242,7 @@ pub enum Token {
     {
         let mut value = String::new();
         let mut is_newline = true;
-        while let Some(&c) = chars.peek() {
+        while let Some(&_c) = chars.peek() {
             if let Self::Whitespace(true) = Self::whitespace_from_chars(chars)? {
                 break;
             }

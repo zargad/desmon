@@ -1,24 +1,27 @@
 use std::collections::HashMap;
 use std::iter::Peekable;
+use std::fs::read_to_string;
 
 
-pub fn preprocess<I>(chars: &mut Peekable<I>) -> Result<String, &'static str>
+pub fn preprocess<I>(chars: &mut Peekable<I>, definitions: &mut HashMap<String, String>) -> Result<String, &'static str>
 where I: Iterator<Item = char>
 {
     let mut result = String::new();
-    let mut definitions = HashMap::new();
     while let Some(c) = chars.next() {
         if c == '/' {
-            match chars.next() {
-                Some('/') => preprocess_comment(chars)?,
-                Some('*') => preprocess_multiline_comment(chars)?,
-                Some('=') => preprocess_set_definition(chars, &mut definitions)?,
-                c => {
-                    result.push('/');
-                    if let Some(c) = c {
+            if let Some(c) = chars.next() {
+                match c {
+                    '/' => preprocess_comment(chars)?,
+                    '*' => preprocess_multiline_comment(chars)?,
+                    '=' => preprocess_set_definition(chars, definitions)?,
+                    '#' => add_file(chars, definitions, &mut result)?,
+                    c => {
+                        result.push('/');
                         result.push(c);
-                    }
-                },
+                    },
+                }
+            } else {
+                result.push('/');
             }
         } else if c == '?' {
             result.push_str(preprocess_get_definition(chars, &definitions)?.as_str());
@@ -26,8 +29,27 @@ where I: Iterator<Item = char>
             result.push(c);
         }
     }
-    eprintln!("{definitions:#?}");
     Ok(result)
+}
+
+
+pub fn add_file<I>(chars: &mut Peekable<I>, definitions: &mut HashMap<String, String>, result: &mut String) -> Result<(), &'static str>
+where I: Iterator<Item = char>
+{
+    let mut file_name = String::new();
+    while let Some(c) = chars.next() {
+        if c == '\n' {
+            break;
+        } else {
+            file_name.push(c);
+        }
+    }
+    if let Ok(contents) = read_to_string(file_name) {
+        result.push_str(preprocess(&mut contents.chars().peekable(), definitions)?.as_str());
+        Ok(())
+    } else {
+        Err("Module was not found")
+    }
 }
 
 

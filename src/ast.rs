@@ -190,7 +190,7 @@ pub enum ExpressionItem {
         match self {
             Self::Variable(v) => v.get_latex(namespaces, ids),
             Self::Other(t) => t.get_latex(),
-            _ => String::new(),
+            // _ => String::new(),
         }
     }
     pub fn vec_to_latex(vec: Vec<Self>, namespaces: Vec<String>, ids: &HashMap<Vec<String>, usize>) -> String {
