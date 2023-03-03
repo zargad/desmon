@@ -106,6 +106,32 @@ pub enum Symbol {
             ]
         ).symbol_from_chars(chars)
     }
+    pub fn get_latex(&self) -> String {
+        String::from(match self {
+            Self::Add => "+",
+            Self::Sub => "-",
+            Self::Mul => "\\cdot",
+            Self::Div => "/",
+            Self::Dot => ".",
+            Self::Pipe => "|",
+            Self::Equal => "=",
+            Self::AddEq => "+=",
+            Self::SubEq => "-=",
+            Self::MulEq => "*=",
+            Self::DivEq => "/=",
+            Self::Arrow => "\\to",
+            Self::Comma => ",",
+            Self::Colon => ":",
+            Self::Elipsis => "...",
+            Self::Semicolon => ";",
+            Self::LeftParen => "(",
+            Self::RightParen => ")",
+            Self::LeftSquare => "[",
+            Self::RightSquare => "]",
+            Self::LeftCurly => "{",
+            Self::RightCurly => "}",
+        })
+    }
 }
 
 
@@ -263,5 +289,12 @@ pub enum Token {
             }
         }
         Ok(Self::Number(value))
+    }
+    pub fn get_latex(&self) -> String {
+        match self {
+            Self::Symbol(s) => s.get_latex(),
+            Self::Number(n) => n.to_string(),
+            _ => String::new(),
+        }
     }
 }

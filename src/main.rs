@@ -8,18 +8,43 @@ use std::collections::HashMap;
 
 mod ast;
 use crate::ast::lexer::Token;
-use crate::ast::{AbstractSyntaxTree, AbstractSyntaxTreeTrait};
+use crate::ast::{AbstractSyntaxItem, AbstractSyntaxTree, AbstractSyntaxTreeTrait, ExpressionItem};
 
 
 enum DesmosLine {
-    Expression(String, Option<u32>, Option<String>),
-    Folder(String, u32),
-    Text(String, Option<u32>),
+    Expression(String, Option<String>, Option<String>),
+    Folder(String),
+    Text(String, Option<String>),
 } impl DesmosLine {
+    pub fn fill_from_ast(vec: &mut Vec<Self>, ast: AbstractSyntaxTree, namespaces: Vec<String>, ids: &HashMap<Vec<String>, usize>) {
+        type T = AbstractSyntaxItem;
+        let temp = namespaces.join(".");
+        let mut folders = vec![];
+        for i in ast {
+            match i {
+                T::Expression(e) => vec.push(Self::Expression(
+                    ExpressionItem::vec_to_latex(e, namespaces.to_vec(), ids),
+                    if temp.is_empty() { None } else { Some(temp.to_string()) }, 
+                    None,
+                )),
+                T::Namespace(name, e) => {
+                    let mut names = namespaces.to_vec();
+                    names.push(name.to_string());
+                    folders.push(Self::Folder(names.join(".")));
+                    Self::fill_from_ast(&mut folders, e, names, ids);
+                },
+                T::Text(t) => vec.push(Self::Text(t, if temp.is_empty() { None } else { Some(temp.to_string()) })),
+            }
+        }
+        vec.append(&mut folders);
+    }
     fn get_desmos_object_js(&self) -> HashMap<&'static str, String> {
         match self {
             Self::Expression(latex, folder_id, color) => {
-                let mut result = HashMap::from([("latex", latex.to_string())]);
+                let mut result = HashMap::from([
+                    ("type", "expression".to_string()),
+                    ("latex", latex.to_string()),
+                ]);
                 if let Some(i) = folder_id {
                     result.insert("folderId", i.to_string());
                 }
@@ -30,10 +55,10 @@ enum DesmosLine {
                 }
                 result
             },
-            Self::Folder(title, id) => HashMap::from([
+            Self::Folder(title) => HashMap::from([
                 ("type", "folder".to_string()),
                 ("title", title.to_string()),
-                ("id", id.to_string()),
+                ("id", title.to_string()),
             ]),
             Self::Text(text, folder_id) => {
                 let mut result = HashMap::from([
@@ -45,7 +70,6 @@ enum DesmosLine {
                 }
                 result
             },
-
         }
     }
 }
@@ -80,12 +104,13 @@ struct GraphingCalculator {
 <script>
     var elt = document.getElementById('calculator');
     var calculator = Desmos.GraphingCalculator(elt);
-    calculator.setState(
+    calculator.setState({{
+        version: 9,
         expressions: {{ list: [");
         for expr in &self.expressions {
             println!("{:?},", expr.get_desmos_object_js());
         }
-        println!("]}}
+        println!("]}}}}
     )");
         println!("</script>");
         println!("</body>");
@@ -117,13 +142,14 @@ fn main() {
     }
     */
     let chars = r"
-# This namespace is very important.
-namespace lol { 
+namespace lol
+{ 
+    # This namespace is very important.
     x = y + 1; 
     namespace hell_nah 
     {
-        this.mmmm.mmmm = 5;
         # This namespace is a little less important.
+        this.mmmm.mmmm = 5;
         a = 5;
     }
     this.bruh(y) = x * 3;
@@ -135,19 +161,29 @@ lol
   .mmmm
   .mmmm;
 ";
-    let _chars = "hello.bruh;";
+    let _chars = r"
+namespace a {
+    namespace b {
+        # waddup
+    }
+}
+";
     let tokens = Token::vec_from_chars(&mut chars.chars().peekable());
-    println!("{tokens:?}");
+    eprintln!("{tokens:?}");
     if let Ok(t) = tokens {
         let abss = AbstractSyntaxTree::from_tokens(&mut t.iter().peekable(), false);
         if let Ok(a) = abss {
-            println!("{a:#?}");
+            eprintln!("{a:#?}");
             let ids = a.get_variable_ids();
-            println!("{ids:#?}");
+            eprintln!("{ids:#?}");
+            let mut lines = vec![];
+            DesmosLine::fill_from_ast(&mut lines, a, vec![], &ids);
+            let calc = GraphingCalculator::from(lines);
+            calc.print_html();
         } else if let Err(e) = abss {
-            println!("{e:?}");
+            eprintln!("{e:?}");
         }
     } else if let Err(e) = tokens {
-        println!("{e:?}");
+        eprintln!("{e:?}");
     }
 }

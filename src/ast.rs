@@ -6,21 +6,50 @@ pub mod lexer;
 use crate::ast::lexer::{Token, Keyword, Symbol};
 
 
-/*
-fn latex_from_id(id: usize) -> String {
+fn latex_from_id(id: usize) -> (u32, String) {
+    let letters = "0123456789abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ";
     let mut result = String::new();
-    result.push(
-    result
+    let mut i = id;
+    while i != 0 {
+        let index = i % letters.len();
+        let b: u8 = letters.as_bytes()[index];
+        let c: char = b as char;
+        result.push(c);
+        i /= letters.len();
+    }
+    (0, result)
 }
-*/
 
 
 #[derive(Debug)]
-enum Variable {
+pub enum Variable {
     Absolute(Vec<String>),
     Relative(Vec<String>),
     Std(String),
 } impl Variable {
+    pub fn get_latex(&self, namespaces: &Vec<String>, ids: &HashMap<Vec<String>, usize>) -> String {
+        if let Self::Std(name) = self {
+            match name.as_str() {
+                "pi" | "e" | "tau" => format!("\\{name}"),
+                "floor" | "abs" | "sin" | "cos" | "tan" => format!("\\operatorname{name}"), 
+                _ => String::new(),
+            }
+        } else if let Some(name) = self.get_name(namespaces.to_vec()) {
+            if let Some(id) = ids.get(&name) {
+                let (_prefix, code) = latex_from_id(*id);
+                if code.is_empty() {
+                    format!("A")
+                } else {
+                    format!("A_{{{code}}}")
+                }
+            } else {
+                String::new()
+            }
+        } else {
+            String::new()
+        }
+
+    }
     pub fn std_from_tokens<'a, I>(tokens: &mut Peekable<I>) -> Result<Self, &'static str>
     where I: Iterator<Item = &'a Token>
     {
@@ -94,7 +123,7 @@ enum Variable {
 }
 
 #[derive(Debug)]
-enum ExpressionItem {
+pub enum ExpressionItem {
     Variable(Variable),
     Other(Token),
 } impl ExpressionItem {
@@ -147,18 +176,20 @@ enum ExpressionItem {
             None
         }
     }
-    /*
-    fn vec_to_latex(vec: Vec<Self>, namespaces: Vec<String>, ids: HashMap<Vec<String>, usize>) -> String {
+    pub fn get_latex(&self, namespaces: &Vec<String>, ids: &HashMap<Vec<String>, usize>) -> String {
+        match self {
+            Self::Variable(v) => v.get_latex(namespaces, ids),
+            Self::Other(t) => t.get_latex(),
+            _ => String::new(),
+        }
+    }
+    pub fn vec_to_latex(vec: Vec<Self>, namespaces: Vec<String>, ids: &HashMap<Vec<String>, usize>) -> String {
         let mut result = String::new();
         for i in vec {
-            if let Some(name) = i.get_variable_name(namespaces) {
-                let id = ids.get(name).expect("Variable not in ids HashMap");
-                result.push();
-            }
+            result.push_str(i.get_latex(&namespaces, ids).as_str());
         }
         result
     }
-    */
 }
 
 
@@ -210,7 +241,7 @@ pub enum AbstractSyntaxItem {
                 Token::Symbol(Symbol::RightCurly) => {
                     tokens.next();
                     if is_namespace {
-                        break;
+                        return Ok(result)
                     }
                     return Err("'}' without an opening '{'");
                 },
@@ -226,7 +257,7 @@ pub enum AbstractSyntaxItem {
                 },
             }
         }
-        Ok(result)
+        Err("Unclosed namespace")
     }
     pub fn namespace_from_tokens<'a, I>(tokens: &mut Peekable<I>) -> Result<Self, &'static str>
     where I: Iterator<Item = &'a Token>
@@ -256,7 +287,7 @@ pub enum AbstractSyntaxItem {
         Ok(Self::Expression(ExpressionItem::vec_from_tokens(tokens)?))
     }
     /*
-    pub fn to_strings_vec(&self, namespaces: &mut Vec<String>) -> Vec<String> {
+    pub fn to_latex_vec(&self, namespaces: &mut Vec<String>) -> Vec<String> {
         match self {
             Self::Expression(items) => {
                 let temp = vec![ExpressionItem::vec_to_string(items.to_vec(), namespaces.to_vec())];
