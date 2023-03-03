@@ -13,7 +13,12 @@ where I: Iterator<Item = char>
                 Some('/') => preprocess_comment(chars)?,
                 Some('*') => preprocess_multiline_comment(chars)?,
                 Some('=') => preprocess_set_definition(chars, &mut definitions)?,
-                _ => result.push('/'),
+                c => {
+                    result.push('/');
+                    if let Some(c) = c {
+                        result.push(c);
+                    }
+                },
             }
         } else if c == '?' {
             result.push_str(preprocess_get_definition(chars, &definitions)?.as_str());

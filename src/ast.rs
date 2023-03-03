@@ -9,7 +9,7 @@ use crate::ast::lexer::{Token, Keyword, Symbol};
 fn latex_from_id(id: usize) -> (String, String) {
     let letters = "0123456789abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ";
     let mut prefixes = vec![];
-    for c in "abcdfghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ".chars() {
+    for c in "abcdfghijklmnopqrstuvwzABCDEFGHIJKLMNOPQRSTUVWXYZ".chars() {
         prefixes.push(c.to_string());
     }
     let index = id % prefixes.len();
@@ -37,7 +37,7 @@ pub enum Variable {
         if let Self::Std(name) = self {
             match name.as_str() {
                 "pi" | "e" | "tau" => format!("\\{name}"),
-                "floor" | "abs" | "sin" | "cos" | "tan" => format!("\\operatorname{name}"), 
+                "floor" | "random" | "abs" | "sin" | "cos" | "tan" => format!("\\operatorname{{{name}}}"), 
                 _ => String::new(),
             }
         } else if let Some(name) = self.get_name(namespaces.to_vec()) {
@@ -153,7 +153,6 @@ pub enum ExpressionItem {
                 },
                 Token::Whitespace(_) => { tokens.next(); },
                 _ => {
-                    println!("{:?}", tokens.peek());
                     return Err("Unexpected token in an expression");
                 },
             }
