@@ -6,10 +6,16 @@ pub mod lexer;
 use crate::ast::lexer::{Token, Keyword, Symbol};
 
 
-fn latex_from_id(id: usize) -> (u32, String) {
+fn latex_from_id(id: usize) -> (String, String) {
     let letters = "0123456789abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ";
+    let mut prefixes = vec![];
+    for c in "abcdfghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ".chars() {
+        prefixes.push(c.to_string());
+    }
+    let index = id % prefixes.len();
+    let prefix = prefixes.get(index).unwrap();
     let mut result = String::new();
-    let mut i = id;
+    let mut i = id / prefixes.len();
     while i != 0 {
         let index = i % letters.len();
         let b: u8 = letters.as_bytes()[index];
@@ -17,7 +23,7 @@ fn latex_from_id(id: usize) -> (u32, String) {
         result.push(c);
         i /= letters.len();
     }
-    (0, result)
+    (prefix.to_string(), result)
 }
 
 
@@ -36,11 +42,11 @@ pub enum Variable {
             }
         } else if let Some(name) = self.get_name(namespaces.to_vec()) {
             if let Some(id) = ids.get(&name) {
-                let (_prefix, code) = latex_from_id(*id);
+                let (prefix, code) = latex_from_id(*id);
                 if code.is_empty() {
-                    format!("A")
+                    format!("{prefix}")
                 } else {
-                    format!("A_{{{code}}}")
+                    format!("{prefix}_{{{code}}}")
                 }
             } else {
                 String::new()

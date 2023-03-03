@@ -59,6 +59,7 @@ enum DesmosLine {
                 ("type", "folder".to_string()),
                 ("title", title.to_string()),
                 ("id", title.to_string()),
+                ("collapsed", "true".to_string()),
             ]),
             Self::Text(text, folder_id) => {
                 let mut result = HashMap::from([
@@ -153,20 +154,13 @@ namespace lol
         a = 5;
     }
     this.bruh(y) = x * 3;
-    this.a =1;
+    this.a = std.pi;
 }
 lol.bruh(this.a);
 lol
   .hell_nah
   .mmmm
   .mmmm;
-";
-    let _chars = r"
-namespace a {
-    namespace b {
-        # waddup
-    }
-}
 ";
     let tokens = Token::vec_from_chars(&mut chars.chars().peekable());
     eprintln!("{tokens:?}");
