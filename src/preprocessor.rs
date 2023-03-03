@@ -6,40 +6,37 @@ pub fn preprocess<I>(chars: &mut Peekable<I>) -> Result<String, &'static str>
 where I: Iterator<Item = char>
 {
     let mut result = String::new();
+    let mut definitions = HashMap::new();
     while let Some(c) = chars.next() {
         if c == '/' {
             match chars.next() {
-                Some('/') => while let Some(c) = chars.next() {
-                    if c == '\n' { break; }
-                },
-                Some('*') => preprocess_multiline_comments(chars)?,
+                Some('/') => preprocess_comment(chars)?,
+                Some('*') => preprocess_multiline_comment(chars)?,
+                Some('=') => preprocess_set_definition(chars, &mut definitions)?,
                 _ => result.push('/'),
             }
+        } else if c == '?' {
+            result.push_str(preprocess_get_definition(chars, &definitions)?.as_str());
         } else {
             result.push(c);
         }
     }
+    eprintln!("{definitions:#?}");
     Ok(result)
 }
 
 
-/*
-fn preprocess_comments<I>(chars: &mut Peekable<I>) -> Result<(), &'static str>
+fn preprocess_comment<I>(chars: &mut Peekable<I>) -> Result<(), &'static str>
 where I: Iterator<Item = char>
 {
-    match c.next() {
-        '/' => while let Some(c) = chars.next() {
-            if c == '\n' { break; }
-        },
-        '*' => preprocess_multiline_comments(chars)?,
-        _ => result.push('/'),
+    while let Some(c) = chars.next() {
+        if c == '\n' { break; }
     }
     Ok(())
 }
-*/
 
 
-fn preprocess_multiline_comments<I>(chars: &mut Peekable<I>) -> Result<(), &'static str>
+fn preprocess_multiline_comment<I>(chars: &mut Peekable<I>) -> Result<(), &'static str>
 where I: Iterator<Item = char>
 {
     let mut level = 1;
@@ -57,29 +54,61 @@ where I: Iterator<Item = char>
 }
 
 
-/*
-pub fn preprocess_definitions<I>(chars: &mut Peekable<I>, definitions: &mut D) -> Result<String, &'static str>
-where 
-    I: Iterator<Item = &'a char>,
-    D: HashMap<String, String>,
+pub fn preprocess_set_definition<I>(chars: &mut Peekable<I>, definitions: &mut HashMap<String, String>) -> Result<(), &'static str>
+where I: Iterator<Item = char>
 {
-    let mut result = String::new();
     let mut key = String::new();
     while let Some(c) = chars.next() {
-        if *c == '\n' {
-            is_in_comment = false;
-        } else if *c == '_' {
-            
-            result.push_str(preprocess)
+        if c.is_whitespace() {
+            break;
+        } else if c.is_alphanumeric() {
+            key.push(c);
+        } else {
+            Err("Definition can only be alphanumeric")?;
         }
-        if !is_in_comment {
-            result.push(*c);
-        }
-        last = *c;
     }
-    return Ok<result>;
+    let mut value = String::new();
+    while let Some(c) = chars.next() {
+        if c == '?' {
+            value.push_str(preprocess_get_definition(chars, definitions)?.as_str());
+        } else if c == '\\' {
+            if chars.next() == Some('\n') {
+                value.push('\n');
+            } else {
+                value.push('\\');
+                value.push(c);
+            }
+        } else if c == '\n' {
+            break;
+        } else {
+            value.push(c);
+        }
+    }
+    definitions.insert(key, value);
+    Ok(())
 }
-*/
+
+
+pub fn preprocess_get_definition<I>(chars: &mut Peekable<I>, definitions: &HashMap<String, String>) -> Result<String, &'static str>
+where I: Iterator<Item = char>
+{
+    let mut current_key = String::new();
+    while let Some(&c) = chars.peek() {
+        if c.is_alphanumeric() {
+            current_key.push(c);
+            chars.next();
+        } else {
+            break;
+        }
+    }
+    if let Some(current_value) = definitions.get(&current_key) {
+        Ok(current_value.to_string())
+    } else {
+        Err("Unkown definition")
+    }
+}
+
+
 /*
 pub fn preprocess(string: String) -> Result<String, &'static str> {
     let mut result = String::new();
