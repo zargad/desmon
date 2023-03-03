@@ -208,25 +208,38 @@ pub enum Token {
     where I: Iterator<Item = char>
     {
         let mut value = String::new();
-        if let Some('#') = chars.next() {} else {
-            return Err("Text starts with '#'");
-        }
+        let mut is_newline = true;
         while let Some(&c) = chars.peek() {
-            if c.is_whitespace() {
-                if c == '\n' {
-                    return Err("Text can not be empty");
-                }
-                chars.next();
-            } else {
+            if let Self::Whitespace(true) = Self::whitespace_from_chars(chars)? {
                 break;
             }
-        }
-        while let Some(&c) = chars.peek() {
-            if c == '\n' {
-                break;
-            } else {
-                value.push(c);
+            if let Some('#') = chars.peek() {
                 chars.next();
+                while let Some(&c) = chars.peek() {
+                    if c == '\n' {
+                        value.push('\n');
+                        is_newline = true;
+                        break;
+                    } if c.is_whitespace() {
+                        chars.next();
+                    } else {
+                        if is_newline {
+                            is_newline = false;
+                        } else {
+                            value.push_str("  ");
+                        }
+                        break; 
+                    }
+                }
+                while let Some(c) = chars.next() {
+                    if c == '\n' {
+                        break;
+                    } else {
+                        value.push(c);
+                    }
+                }
+            } else {
+                break;
             }
         }
         Ok(Self::Text(value))
