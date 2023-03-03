@@ -1,54 +1,69 @@
-pub fn preprocess_comments(string: String) -> String {
+use std::collections::HashMap;
+use std::iter::Peekable;
+
+
+pub fn preprocess<I>(chars: &mut Peekable<I>) -> Result<String, &'static str>
+where I: Iterator<Item = char>
+{
     let mut result = String::new();
-    let mut last = ' ';
-    let mut is_in_comment = false;
-    let mut inline_comment_level = 0;
-    for c in string.chars() {
-        match c {
-            '/' => match last {
-                '/' => if !is_in_comment && inline_comment_level == 0 {
-                    result.pop();
-                    is_in_comment = true;
+    while let Some(c) = chars.next() {
+        if c == '/' {
+            match chars.next() {
+                Some('/') => while let Some(c) = chars.next() {
+                    if c == '\n' { break; }
                 },
-                '*' => inline_comment_level != 0 {
-                    inline_comment_level -= 1;
-                    continue;
-                },
-            },
-            '*' => if last == '/' && !is_in_comment {
-                if inline_comment_level == 0 {
-                    result.pop();
-                }
-                inline_comment_level += 1;
-            },
-            '\n' => is_in_comment = false,
-            _ => (),
-        }
-        if !is_in_comment && inline_comment_level == 0 {
+                Some('*') => preprocess_multiline_comments(chars)?,
+                _ => result.push('/'),
+            }
+        } else {
             result.push(c);
         }
-        last = c;
     }
-    result
+    Ok(result)
 }
 
 
-enum DefinitionType {
-    Base,
-    Line,
-    Block,
+/*
+fn preprocess_comments<I>(chars: &mut Peekable<I>) -> Result<(), &'static str>
+where I: Iterator<Item = char>
+{
+    match c.next() {
+        '/' => while let Some(c) = chars.next() {
+            if c == '\n' { break; }
+        },
+        '*' => preprocess_multiline_comments(chars)?,
+        _ => result.push('/'),
+    }
+    Ok(())
+}
+*/
+
+
+fn preprocess_multiline_comments<I>(chars: &mut Peekable<I>) -> Result<(), &'static str>
+where I: Iterator<Item = char>
+{
+    let mut level = 1;
+    while let Some(c) = chars.next() {
+        if c == '*' {
+            if let Some('/') = chars.next() {
+                level -= 1;
+            }
+        }
+        if level == 0 {
+            break;
+        }
+    }
+    Ok(())
 }
 
 
-pub fn preprocess_definitions<'a, I>(definition_type: D, chars: &mut I, definitions: &mut D) -> Result<String, &'static str>
+/*
+pub fn preprocess_definitions<I>(chars: &mut Peekable<I>, definitions: &mut D) -> Result<String, &'static str>
 where 
-    D: DefinitionType,
     I: Iterator<Item = &'a char>,
     D: HashMap<String, String>,
 {
     let mut result = String::new();
-    let mut last = ' ';
-    let mut definitions = HashMap::<String, String>::new();
     let mut key = String::new();
     while let Some(c) = chars.next() {
         if *c == '\n' {
@@ -64,6 +79,7 @@ where
     }
     return Ok<result>;
 }
+*/
 /*
 pub fn preprocess(string: String) -> Result<String, &'static str> {
     let mut result = String::new();
