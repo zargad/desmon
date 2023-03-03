@@ -9,7 +9,7 @@ use crate::ast::lexer::{Token, Keyword, Symbol};
 fn latex_from_id(id: usize) -> (String, String) {
     let letters = "0123456789abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ";
     let mut prefixes = vec![];
-    for c in "abcdfghijklmnopqrstuvwzABCDEFGHIJKLMNOPQRSTUVWXYZ".chars() {
+    for c in "abcdfghijklmnopqstuvwzABCDEFGHIJKLMNOPQRSTUVWXYZ".chars() {
         prefixes.push(c.to_string());
     }
     let index = id % prefixes.len();
@@ -34,11 +34,16 @@ pub enum Variable {
     Std(String),
 } impl Variable {
     pub fn get_latex(&self, namespaces: &Vec<String>, ids: &HashMap<Vec<String>, usize>) -> String {
+        let consts = vec!["pi", "e", "tau"];
+        let funcs = vec!["floor", "random", "abs", "sin", "cos", "tan"];
         if let Self::Std(name) = self {
-            match name.as_str() {
-                "pi" | "e" | "tau" => format!("\\{name}"),
-                "floor" | "random" | "abs" | "sin" | "cos" | "tan" => format!("\\operatorname{{{name}}}"), 
-                _ => String::new(),
+            let name = &name.as_str();
+            if consts.contains(name) {
+                format!("\\{name}")
+            } else if funcs.contains(name) {
+                format!("\\operatorname{{{name}}}")
+            } else {
+                String::new()
             }
         } else if let Some(name) = self.get_name(namespaces.to_vec()) {
             if let Some(id) = ids.get(&name) {
