@@ -1,12 +1,16 @@
 use std::collections::HashMap;
 use std::iter::Peekable;
 use std::fs::read_to_string;
+use std::path::Path;
+use std::ffi::OsStr;
 
 
-pub fn preprocess<I>(chars: &mut Peekable<I>, definitions: &mut HashMap<String, String>) -> Result<String, &'static str>
-where I: Iterator<Item = char>
+pub fn preprocess<P: AsRef<Path> + AsRef<OsStr>>(path: P, definitions: &mut HashMap<String, String>) -> Result<String, &'static str>
 {
+    let path = Path::new(&path);
+    let contents = read_to_string(path).map_err(|_| "Could not read file")?;
     let mut result = String::new();
+    let chars = &mut contents.chars().peekable();
     while let Some(c) = chars.next() {
         match c {
             '/' => if let Some(c) = chars.next() {
@@ -14,7 +18,7 @@ where I: Iterator<Item = char>
                     '/' => preprocess_comment(chars)?,
                     '*' => preprocess_multiline_comment(chars)?,
                     '=' => preprocess_set_definition(chars, definitions)?,
-                    '#' => add_file(chars, definitions, &mut result)?,
+                    '#' => add_file(chars, path.parent().ok_or("Could not get parent dir")?, definitions, &mut result)?,
                     c => {
                         result.push('/');
                         result.push(c);
@@ -31,9 +35,10 @@ where I: Iterator<Item = char>
 }
 
 
-pub fn add_file<I>(chars: &mut Peekable<I>, definitions: &mut HashMap<String, String>, result: &mut String) -> Result<(), &'static str>
+pub fn add_file<I, P: AsRef<Path> + AsRef<OsStr>>(chars: &mut Peekable<I>, parent: P, definitions: &mut HashMap<String, String>, result: &mut String) -> Result<(), &'static str>
 where I: Iterator<Item = char>
 {
+    let parent = Path::new(&parent);
     let mut file_name = String::new();
     while let Some(c) = chars.next() {
         if c == '\n' {
@@ -42,12 +47,9 @@ where I: Iterator<Item = char>
             file_name.push(c);
         }
     }
-    if let Ok(contents) = read_to_string(file_name) {
-        result.push_str(preprocess(&mut contents.chars().peekable(), definitions)?.as_str());
-        Ok(())
-    } else {
-        Err("Module was not found")
-    }
+    let file_path = parent.join(file_name);
+    result.push_str(preprocess(file_path, definitions)?.as_str());
+    Ok(())
 }
 
 
