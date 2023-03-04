@@ -32,11 +32,18 @@ enum DesmosLine {
                     if temp.is_empty() { None } else { Some(temp.to_string()) }, 
                     None,
                 )),
-                T::Graph(c, e) => vec.push(Self::Expression(
-                    ExpressionItem::vec_to_latex(e, namespaces.to_vec(), ids),
-                    if temp.is_empty() { None } else { Some(temp.to_string()) }, 
-                    Some(c.get_latex(&namespaces, ids)),
-                )),
+                T::Graph(c, e) => {
+                    let color = if let Some(c) = c { 
+                        c.get_latex(&namespaces, ids)
+                    } else { 
+                        String::new() 
+                    };
+                    vec.push(Self::Expression(
+                        ExpressionItem::vec_to_latex(e, namespaces.to_vec(), ids),
+                        if temp.is_empty() { None } else { Some(temp.to_string()) }, 
+                        Some(color),
+                    ));
+                },
                 T::Namespace(name, e) => {
                     let mut names = namespaces.to_vec();
                     names.push(name.to_string());
@@ -167,6 +174,6 @@ fn cli(options: Vec<String>) -> Result<(), &'static str> {
 
 fn main() {
     if let Err(e) = cli(args().collect()) {
-        println!("\x1b[31m{e}\x1b[0m");
+        eprintln!("\x1b[31m{e}\x1b[0m");
     }
 }

@@ -33,7 +33,7 @@ pub enum Variable {
     Relative(Vec<String>),
     Std(String),
 } impl Variable {
-    pub fn get_latex(&self, namespaces: &Vec<String>, ids: &HashMap<Vec<String>, usize>) -> String {
+    pub fn get_latex(&self, namespaces: &[String], ids: &HashMap<Vec<String>, usize>) -> String {
         let consts = vec!["pi", "e", "tau"];
         let funcs = vec!["floor", "random", "abs", "sin", "cos", "tan", "rgb", "hsv", "length"];
         if let Self::Std(name) = self {
@@ -49,7 +49,7 @@ pub enum Variable {
             if let Some(id) = ids.get(&name) {
                 let (prefix, code) = latex_from_id(*id);
                 if code.is_empty() {
-                    format!("{prefix}")
+                    prefix
                 } else {
                     format!("{prefix}_{{{code}}}")
                 }
@@ -186,7 +186,7 @@ pub enum ExpressionItem {
             None
         }
     }
-    pub fn get_latex(&self, namespaces: &Vec<String>, ids: &HashMap<Vec<String>, usize>) -> String {
+    pub fn get_latex(&self, namespaces: &[String], ids: &HashMap<Vec<String>, usize>) -> String {
         match self {
             Self::Variable(v) => v.get_latex(namespaces, ids),
             Self::Other(t) => t.get_latex(),
@@ -206,7 +206,7 @@ pub enum ExpressionItem {
 #[derive(Debug)]
 pub enum AbstractSyntaxItem {
     Expression(Vec<ExpressionItem>),
-    Graph(ExpressionItem, Vec<ExpressionItem>),
+    Graph(Option<ExpressionItem>, Vec<ExpressionItem>),
     Namespace(String, Vec<Self>),
     Text(String),
 } impl AbstractSyntaxItem {
@@ -219,7 +219,7 @@ pub enum AbstractSyntaxItem {
         return Self::vec_from_tokens(tokens);
     }
     */
-    pub fn get_variable_counts(&self, result: &mut HashMap<Vec<String>, u32>, namespaces: &Vec<String>) {
+    pub fn get_variable_counts(&self, result: &mut HashMap<Vec<String>, u32>, namespaces: &[String]) {
         match self {
             Self::Expression(items) => for i in items {
                 if let Some(name) = i.get_variable_name(namespaces.to_vec()) {
@@ -245,11 +245,13 @@ pub enum AbstractSyntaxItem {
                             .or_insert(1);
                     }
                 }
-                if let Some(name) = color.get_variable_name(namespaces.to_vec()) {
-                    result
-                        .entry(name)
-                        .and_modify(|count| *count += 1)
-                        .or_insert(1);
+                if let Some(c) = color {
+                    if let Some(name) = c.get_variable_name(namespaces.to_vec()) {
+                        result
+                            .entry(name)
+                            .and_modify(|count| *count += 1)
+                            .or_insert(1);
+                    }
                 }
             },
             _ => (),
@@ -258,10 +260,10 @@ pub enum AbstractSyntaxItem {
     pub fn graph_from_tokens<'a, I>(tokens: &mut Peekable<I>) -> Result<Self, &'static str>
     where I: Iterator<Item = &'a Token>
     {
-        if let Some(Token::Whitespace(false)) = tokens.next() {} else {
-            Err("Whitespace is required after 'graph'")?;
+        if let Some(Token::Whitespace(false)) = tokens.peek() {
+            tokens.next();
         }
-        let color = ExpressionItem::variable_from_tokens(tokens)?;
+        let color = ExpressionItem::variable_from_tokens(tokens).ok();
         if let Some(Token::Whitespace(_)) = tokens.peek() {
             tokens.next();
         }
@@ -269,14 +271,13 @@ pub enum AbstractSyntaxItem {
             Err("':' expected")?;
         }
         let graph = ExpressionItem::vec_from_tokens(tokens)?;
-        eprintln!("{color:?} - {graph:?}");
         Ok(Self::Graph(color, graph))
     }
     pub fn namespace_from_tokens<'a, I>(tokens: &mut Peekable<I>) -> Result<Self, &'static str>
     where I: Iterator<Item = &'a Token>
     {
-        if let Some(Token::Whitespace(false)) = tokens.next() {} else {
-            return Err("Whitespace is required after 'namespace'");
+        if let Some(Token::Whitespace(false)) = tokens.peek() {
+            tokens.next();
         }
         if let Some(Token::Identifier(name)) = tokens.next() {
             if let Some(&Token::Whitespace(_)) = tokens.peek() {
@@ -333,7 +334,7 @@ impl AbstractSyntaxTreeTrait for AbstractSyntaxTree {
     fn get_variable_ids(&self) -> HashMap<Vec<String>, usize> {
         let mut counts = HashMap::new();
         for i in self {
-            i.get_variable_counts(&mut counts, &vec![]);
+            i.get_variable_counts(&mut counts, &[]);
         }
         let mut hash_vec: Vec<(&Vec<String>, &u32)> = counts.iter().collect();
         hash_vec.sort_by(|a, b| b.1.cmp(a.1));
