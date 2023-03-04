@@ -1,25 +1,26 @@
-// use std::env;
-use std::fs::{read_to_string};
-// use std::io::{prelude::*, BufReader};
-// use std::iter::Peekable;
-// use std::{thread, time};
+use std::env::args;
 use std::collections::HashMap;
-
 
 mod preprocessor;
 use crate::preprocessor::preprocess;
-
 
 mod ast;
 use crate::ast::lexer::Token;
 use crate::ast::{AbstractSyntaxItem, AbstractSyntaxTree, AbstractSyntaxTreeTrait, ExpressionItem};
 
 
+#[derive(Debug)]
 enum DesmosLine {
     Expression(String, Option<String>, Option<String>),
     Folder(String),
     Text(String, Option<String>),
 } impl DesmosLine {
+    pub fn vec_from_ast(ast: AbstractSyntaxTree) -> Vec<Self> {
+        let mut result = vec![];
+        let ids = &ast.get_variable_ids();
+        Self::fill_from_ast(&mut result, ast, vec![], ids);
+        result
+    }
     pub fn fill_from_ast(vec: &mut Vec<Self>, ast: AbstractSyntaxTree, namespaces: Vec<String>, ids: &HashMap<Vec<String>, usize>) {
         type T = AbstractSyntaxItem;
         let temp = namespaces.join(".");
@@ -134,82 +135,38 @@ struct GraphingCalculator {
 }
 
 
-fn main() {
-    /*
-    let args: Vec<String> = env::args().collect();
-    let print_tokens = args.contains(&"--tokens".to_string());
-    let print_ast = args.contains(&"--ast".to_string());
-    let print_preprocess = args.contains(&"--preprocess".to_string());
-    if let Some(file_path) = &args.get(1) {
-        match GraphingCalculator::from_file(file_path, print_tokens, print_ast, print_preprocess) {
-            Ok(gc) => match gc.print_html(print_tokens, print_ast, print_preprocess) {
-                 Ok(()) => (),
-                 Err(e) => eprintln!("\x1b[31m{e}\x1b[0m"),
-            },
-            Err(e) => eprintln!("\x1b[31m{e}\x1b[0m"),
-        }
-    } else {
-        eprintln!("\x1b[33mNo file specified\x1b[0m");
-    }
-    */
-    let _raw = r"
-// I PEE IN???
-namespace lol
-{ 
-    # This namespace is very important.
-    # Idk why but it is
-    x = y + 1; 
-    // bruh lol
-    /=trait { \
-        this.glock_clock = 5; \
-        this.fuck_me -> 3; \
-    }
-    namespace hell_nah 
-    {
-        # This namespace is a little less important.
-        #
-        # It has a empty line!
-        #
-
-        #
-        # THis is a different comment
-        #
-        this.mmmm.mmmm = 5;
-    }
-    this.bruh(y) = x * 3;
-    this.a = std.pi;
-    namespace myass ?trait
-}
-lol.bruh(this.a);
-lol
-  .hell_nah
-  .mmmm
-  .mmmm;
-";
+fn cli(options: Vec<String>) -> Result<(), &'static str> {
     let mut definitions = HashMap::new();
-    let raw = read_to_string("game2.ds").expect("WHAT A FUCKED UP DAY!!!...");
-    let raw = preprocess(&mut raw.chars().peekable(), &mut definitions);
-    if let Ok(chars) = raw {
-        eprintln!("{chars}");
-        let tokens = Token::vec_from_chars(&mut chars.chars().peekable());
-        eprintln!("{tokens:?}");
-        if let Ok(t) = tokens {
-            let abss = AbstractSyntaxTree::from_tokens(&mut t.iter().peekable(), false);
-            if let Ok(a) = abss {
-                eprintln!("{a:#?}");
-                let ids = a.get_variable_ids();
-                eprintln!("{ids:#?}");
-                let mut lines = vec![];
-                DesmosLine::fill_from_ast(&mut lines, a, vec![], &ids);
-                let calc = GraphingCalculator::from(lines);
-                calc.print_html();
-            } else if let Err(e) = abss {
-                eprintln!("{e:?}");
-            }
-        } else if let Err(e) = tokens {
-            eprintln!("{e:?}");
+    if let Some(path) = options.get(1) {
+        let chars = preprocess(path, &mut definitions)?;
+        if options.contains(&"--preprocess".to_string()) {
+            eprintln!("{chars}");
         }
-    } else if let Err(e) = raw {
-        eprintln!("{e:?}"); 
+        let tokens = Token::vec_from_chars(&mut chars.chars().peekable())?;
+        if options.contains(&"--tokens".to_string()) {
+            eprintln!("{tokens:?}"); 
+        }
+        let ast = AbstractSyntaxTree::from_tokens(&mut tokens.iter().peekable(), false)?;
+        if options.contains(&"--ast".to_string()) {
+            eprintln!("{ast:#?}"); 
+        }
+        let lines = DesmosLine::vec_from_ast(ast);
+        if options.contains(&"--lines".to_string()) {
+            eprintln!("{lines:#?}"); 
+        }
+        let calc = GraphingCalculator::from(lines);
+        calc.print_html();
+    } else {
+        println!("----The-Desmon-Compiler----");
+        println!("Compile Desmon code into an HTML file by running:");
+        println!(">>> cargo run [path_to_file] > [path_to_html_output_file]");
+    }
+    Ok(())
+}
+
+
+fn main() {
+    if let Err(e) = cli(args().collect()) {
+        println!("\x1b[31m{e}\x1b[0m");
     }
 }
