@@ -206,7 +206,7 @@ pub enum ExpressionItem {
 #[derive(Debug)]
 pub enum AbstractSyntaxItem {
     Expression(Vec<ExpressionItem>),
-    Graph(Option<ExpressionItem>, Vec<ExpressionItem>),
+    Graph(Option<ExpressionItem>, Option<String>, Vec<ExpressionItem>),
     Namespace(String, Vec<Self>),
     Text(String),
 } impl AbstractSyntaxItem {
@@ -236,7 +236,7 @@ pub enum AbstractSyntaxItem {
                     i.get_variable_counts(result, names);
                 }
             },
-            Self::Graph(color, items) => {
+            Self::Graph(color, _, items) => {
                 for i in items {
                     if let Some(name) = i.get_variable_name(namespaces.to_vec()) {
                         result
@@ -260,18 +260,33 @@ pub enum AbstractSyntaxItem {
     pub fn graph_from_tokens<'a, I>(tokens: &mut Peekable<I>) -> Result<Self, &'static str>
     where I: Iterator<Item = &'a Token>
     {
-        if let Some(Token::Whitespace(false)) = tokens.peek() {
+        if let Some(Token::Whitespace(_)) = tokens.peek() {
             tokens.next();
         }
         let color = ExpressionItem::variable_from_tokens(tokens).ok();
         if let Some(Token::Whitespace(_)) = tokens.peek() {
             tokens.next();
         }
+        let mut opacity = None;
+        if let Some(Token::Symbol(Symbol::Add)) = tokens.peek() {
+            tokens.next();
+            if let Some(Token::Whitespace(_)) = tokens.peek() {
+                tokens.next();
+            }
+            if let Some(Token::Number(n)) = tokens.next() {
+                opacity = Some(n);
+                if let Some(Token::Whitespace(_)) = tokens.peek() {
+                    tokens.next();
+                }
+            } else {
+                Err("Expected a number after '+'")?;
+            }
+        }
         if let Some(Token::Symbol(Symbol::Colon)) = tokens.next() {} else {
             Err("':' expected")?;
         }
         let graph = ExpressionItem::vec_from_tokens(tokens)?;
-        Ok(Self::Graph(color, graph))
+        Ok(Self::Graph(color, opacity.cloned(), graph))
     }
     pub fn namespace_from_tokens<'a, I>(tokens: &mut Peekable<I>) -> Result<Self, &'static str>
     where I: Iterator<Item = &'a Token>

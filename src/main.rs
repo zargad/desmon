@@ -10,8 +10,17 @@ use crate::ast::{AbstractSyntaxItem, AbstractSyntaxTree, AbstractSyntaxTreeTrait
 
 
 #[derive(Debug)]
+struct DesmosExpression {
+    latex: String,
+    folder_id: Option<String>,
+    opacity: Option<String>,
+    color_latex: Option<String>,
+}
+
+
+#[derive(Debug)]
 enum DesmosLine {
-    Expression(String, Option<String>, Option<String>),
+    Expression(DesmosExpression),
     Folder(String),
     Text(String, Option<String>),
 } impl DesmosLine {
@@ -27,22 +36,24 @@ enum DesmosLine {
         let mut folders = vec![];
         for i in ast {
             match i {
-                T::Expression(e) => vec.push(Self::Expression(
-                    ExpressionItem::vec_to_latex(e, namespaces.to_vec(), ids),
-                    if temp.is_empty() { None } else { Some(temp.to_string()) }, 
-                    None,
-                )),
-                T::Graph(c, e) => {
+                T::Expression(e) => vec.push(Self::Expression(DesmosExpression {
+                    latex: ExpressionItem::vec_to_latex(e, namespaces.to_vec(), ids),
+                    folder_id: if temp.is_empty() { None } else { Some(temp.to_string()) }, 
+                    opacity: None,
+                    color_latex: None,
+                })),
+                T::Graph(c, opacity, e) => {
                     let color = if let Some(c) = c { 
                         c.get_latex(&namespaces, ids)
                     } else { 
                         String::new() 
                     };
-                    vec.push(Self::Expression(
-                        ExpressionItem::vec_to_latex(e, namespaces.to_vec(), ids),
-                        if temp.is_empty() { None } else { Some(temp.to_string()) }, 
-                        Some(color),
-                    ));
+                    vec.push(Self::Expression(DesmosExpression {
+                        latex: ExpressionItem::vec_to_latex(e, namespaces.to_vec(), ids),
+                        folder_id: if temp.is_empty() { None } else { Some(temp.to_string()) }, 
+                        opacity,
+                        color_latex: Some(color),
+                    }));
                 },
                 T::Namespace(name, e) => {
                     let mut names = namespaces.to_vec();
@@ -57,19 +68,21 @@ enum DesmosLine {
     }
     fn get_desmos_object_js(&self) -> HashMap<&'static str, String> {
         match self {
-            Self::Expression(latex, folder_id, color) => {
+            Self::Expression(e) => {
                 let mut result = HashMap::from([
                     ("type", "expression".to_string()),
-                    ("latex", latex.to_string()),
+                    ("latex", e.latex.to_string()),
                 ]);
-                if let Some(i) = folder_id {
+                if let Some(i) = &e.folder_id {
                     result.insert("folderId", i.to_string());
                 }
-                if let Some(c) = color {
+                if let Some(c) = &e.color_latex {
                     result.insert("colorLatex", c.to_string());
-                    result.insert("fillOpacity", "1".to_string());
                 } else {
                     result.insert("hidden", "true".to_string());
+                }
+                if let Some(o) = &e.opacity {
+                    result.insert("fillOpacity", o.to_string());
                 }
                 result
             },
