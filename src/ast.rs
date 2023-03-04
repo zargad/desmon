@@ -35,7 +35,7 @@ pub enum Variable {
 } impl Variable {
     pub fn get_latex(&self, namespaces: &Vec<String>, ids: &HashMap<Vec<String>, usize>) -> String {
         let consts = vec!["pi", "e", "tau"];
-        let funcs = vec!["floor", "random", "abs", "sin", "cos", "tan", "rgb", "hsv"];
+        let funcs = vec!["floor", "random", "abs", "sin", "cos", "tan", "rgb", "hsv", "length"];
         if let Self::Std(name) = self {
             let name = &name.as_str();
             if consts.contains(name) {
@@ -259,7 +259,7 @@ pub enum AbstractSyntaxItem {
     where I: Iterator<Item = &'a Token>
     {
         if let Some(Token::Whitespace(false)) = tokens.next() {} else {
-            Err("Whitespace is required after 'visual'")?;
+            Err("Whitespace is required after 'graph'")?;
         }
         let color = ExpressionItem::variable_from_tokens(tokens)?;
         if let Some(Token::Whitespace(_)) = tokens.peek() {
