@@ -1,9 +1,13 @@
 // use std::env;
-// use std::fs::{/*File, */read_to_string};
+use std::fs::{read_to_string};
 // use std::io::{prelude::*, BufReader};
 // use std::iter::Peekable;
 // use std::{thread, time};
 use std::collections::HashMap;
+
+
+mod preprocessor;
+use crate::preprocessor::preprocess;
 
 
 mod ast;
@@ -26,6 +30,11 @@ enum DesmosLine {
                     ExpressionItem::vec_to_latex(e, namespaces.to_vec(), ids),
                     if temp.is_empty() { None } else { Some(temp.to_string()) }, 
                     None,
+                )),
+                T::Graph(c, e) => vec.push(Self::Expression(
+                    ExpressionItem::vec_to_latex(e, namespaces.to_vec(), ids),
+                    if temp.is_empty() { None } else { Some(temp.to_string()) }, 
+                    Some(c.get_latex(&namespaces, ids)),
                 )),
                 T::Namespace(name, e) => {
                     let mut names = namespaces.to_vec();
@@ -50,6 +59,7 @@ enum DesmosLine {
                 }
                 if let Some(c) = color {
                     result.insert("colorLatex", c.to_string());
+                    result.insert("fillOpacity", "1".to_string());
                 } else {
                     result.insert("hidden", "true".to_string());
                 }
@@ -142,19 +152,33 @@ fn main() {
         eprintln!("\x1b[33mNo file specified\x1b[0m");
     }
     */
-    let chars = r"
+    let _raw = r"
+// I PEE IN???
 namespace lol
 { 
     # This namespace is very important.
+    # Idk why but it is
     x = y + 1; 
+    // bruh lol
+    /=trait { \
+        this.glock_clock = 5; \
+        this.fuck_me -> 3; \
+    }
     namespace hell_nah 
     {
         # This namespace is a little less important.
+        #
+        # It has a empty line!
+        #
+
+        #
+        # THis is a different comment
+        #
         this.mmmm.mmmm = 5;
-        a = 5;
     }
     this.bruh(y) = x * 3;
     this.a = std.pi;
+    namespace myass ?trait
 }
 lol.bruh(this.a);
 lol
@@ -162,22 +186,30 @@ lol
   .mmmm
   .mmmm;
 ";
-    let tokens = Token::vec_from_chars(&mut chars.chars().peekable());
-    eprintln!("{tokens:?}");
-    if let Ok(t) = tokens {
-        let abss = AbstractSyntaxTree::from_tokens(&mut t.iter().peekable(), false);
-        if let Ok(a) = abss {
-            eprintln!("{a:#?}");
-            let ids = a.get_variable_ids();
-            eprintln!("{ids:#?}");
-            let mut lines = vec![];
-            DesmosLine::fill_from_ast(&mut lines, a, vec![], &ids);
-            let calc = GraphingCalculator::from(lines);
-            calc.print_html();
-        } else if let Err(e) = abss {
+    let mut definitions = HashMap::new();
+    let raw = read_to_string("game2.ds").expect("WHAT A FUCKED UP DAY!!!...");
+    let raw = preprocess(&mut raw.chars().peekable(), &mut definitions);
+    if let Ok(chars) = raw {
+        eprintln!("{chars}");
+        let tokens = Token::vec_from_chars(&mut chars.chars().peekable());
+        eprintln!("{tokens:?}");
+        if let Ok(t) = tokens {
+            let abss = AbstractSyntaxTree::from_tokens(&mut t.iter().peekable(), false);
+            if let Ok(a) = abss {
+                eprintln!("{a:#?}");
+                let ids = a.get_variable_ids();
+                eprintln!("{ids:#?}");
+                let mut lines = vec![];
+                DesmosLine::fill_from_ast(&mut lines, a, vec![], &ids);
+                let calc = GraphingCalculator::from(lines);
+                calc.print_html();
+            } else if let Err(e) = abss {
+                eprintln!("{e:?}");
+            }
+        } else if let Err(e) = tokens {
             eprintln!("{e:?}");
         }
-    } else if let Err(e) = tokens {
-        eprintln!("{e:?}");
+    } else if let Err(e) = raw {
+        eprintln!("{e:?}"); 
     }
 }

@@ -171,11 +171,13 @@ pub enum Symbol {
 #[derive(Debug,Copy,Clone)]
 pub enum Keyword {
     Namespace,
+    Graph,
     This,
     Std,
 } impl Keyword {
     pub fn from_string(string: String) -> Option<Self> {
         match string.as_str() {
+            "graph" => Some(Self::Graph),
             "namespace" => Some(Self::Namespace),
             "this" => Some(Self::This),
             "std" => Some(Self::Std),

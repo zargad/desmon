@@ -35,7 +35,7 @@ pub enum Variable {
 } impl Variable {
     pub fn get_latex(&self, namespaces: &Vec<String>, ids: &HashMap<Vec<String>, usize>) -> String {
         let consts = vec!["pi", "e", "tau"];
-        let funcs = vec!["floor", "random", "abs", "sin", "cos", "tan"];
+        let funcs = vec!["floor", "random", "abs", "sin", "cos", "tan", "rgb", "hsv"];
         if let Self::Std(name) = self {
             let name = &name.as_str();
             if consts.contains(name) {
@@ -206,6 +206,7 @@ pub enum ExpressionItem {
 #[derive(Debug)]
 pub enum AbstractSyntaxItem {
     Expression(Vec<ExpressionItem>),
+    Graph(ExpressionItem, Vec<ExpressionItem>),
     Namespace(String, Vec<Self>),
     Text(String),
 } impl AbstractSyntaxItem {
@@ -235,39 +236,41 @@ pub enum AbstractSyntaxItem {
                     i.get_variable_counts(result, names);
                 }
             },
+            Self::Graph(color, items) => {
+                for i in items {
+                    if let Some(name) = i.get_variable_name(namespaces.to_vec()) {
+                        result
+                            .entry(name)
+                            .and_modify(|count| *count += 1)
+                            .or_insert(1);
+                    }
+                }
+                if let Some(name) = color.get_variable_name(namespaces.to_vec()) {
+                    result
+                        .entry(name)
+                        .and_modify(|count| *count += 1)
+                        .or_insert(1);
+                }
+            },
             _ => (),
         }
     }
-    pub fn vec_from_tokens<'a, I>(tokens: &mut Peekable<I>, is_namespace: bool) -> Result<Vec<Self>, &'static str>
+    pub fn graph_from_tokens<'a, I>(tokens: &mut Peekable<I>) -> Result<Self, &'static str>
     where I: Iterator<Item = &'a Token>
     {
-        let mut result = vec![];
-        while let Some(token) = tokens.peek() {
-            match token {
-                Token::Keyword(Keyword::Namespace) => {
-                    tokens.next();
-                    result.push(Self::namespace_from_tokens(tokens)?);
-                },
-                Token::Symbol(Symbol::RightCurly) => {
-                    tokens.next();
-                    if is_namespace {
-                        return Ok(result)
-                    }
-                    return Err("'}' without an opening '{'");
-                },
-                Token::Text(t) => {
-                    tokens.next();
-                    result.push(Self::Text(t.to_string()));
-                }
-                Token::Whitespace(_) => {
-                    tokens.next();
-                },
-                _ => {
-                    result.push(Self::expression_from_tokens(tokens)?);
-                },
-            }
+        if let Some(Token::Whitespace(false)) = tokens.next() {} else {
+            Err("Whitespace is required after 'visual'")?;
         }
-        Err("Unclosed namespace")
+        let color = ExpressionItem::variable_from_tokens(tokens)?;
+        if let Some(Token::Whitespace(_)) = tokens.peek() {
+            tokens.next();
+        }
+        if let Some(Token::Symbol(Symbol::Colon)) = tokens.next() {} else {
+            Err("':' expected")?;
+        }
+        let graph = ExpressionItem::vec_from_tokens(tokens)?;
+        eprintln!("{color:?} - {graph:?}");
+        Ok(Self::Graph(color, graph))
     }
     pub fn namespace_from_tokens<'a, I>(tokens: &mut Peekable<I>) -> Result<Self, &'static str>
     where I: Iterator<Item = &'a Token>
@@ -278,16 +281,12 @@ pub enum AbstractSyntaxItem {
         if let Some(Token::Identifier(name)) = tokens.next() {
             if let Some(&Token::Whitespace(_)) = tokens.peek() {
                 tokens.next();
-            } else if let Some(&Token::Symbol(Symbol::LeftCurly)) = tokens.peek() {
-                tokens.next();
-                return Ok(Self::Namespace(name.to_string(), Self::vec_from_tokens(tokens, true)?));
+            }
+            return if let Some(&Token::Symbol(Symbol::LeftCurly)) = tokens.next() {
+                 Ok(Self::Namespace(name.to_string(), AbstractSyntaxTree::from_tokens(tokens, true)?))
             } else {
-                return Err("Unexpected token");
-            }
-            if let Some(Token::Symbol(Symbol::LeftCurly)) = tokens.next() {
-                return Ok(Self::Namespace(name.to_string(), Self::vec_from_tokens(tokens, true)?));
-            }
-            return Err("'{' is required after a namespace declaration");
+                 Err("Unexpected token")
+            };
         }
         Err("Namespace name should be an identifier")
     }
@@ -364,9 +363,13 @@ impl AbstractSyntaxTreeTrait for AbstractSyntaxTree {
                 Token::Symbol(Symbol::RightCurly) => {
                     tokens.next();
                     if is_namespace {
-                        break;
+                        return Ok(());
                     }
                     return Err("'}' without an opening '{'");
+                },
+                Token::Keyword(Keyword::Graph) => {
+                    tokens.next();    
+                    self.push(A::graph_from_tokens(tokens)?);
                 },
                 Token::Text(t) => {
                     tokens.next();
@@ -376,6 +379,10 @@ impl AbstractSyntaxTreeTrait for AbstractSyntaxTree {
                 _ => { self.push(A::expression_from_tokens(tokens)?); },
             }
         }
-        Ok(())
+        if is_namespace {
+            Err("Unclosed namespace")
+        } else {
+            Ok(())
+        }
     }
 }
