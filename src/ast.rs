@@ -36,6 +36,15 @@ pub enum Variable {
     pub fn get_latex(&self, namespaces: &[String], usespace: &HashMap<String, Self>, ids: &HashMap<Vec<String>, usize>) -> String {
         let consts = vec!["pi", "e", "tau"];
         let funcs = vec!["floor", "random", "abs", "sin", "cos", "tan", "rgb", "hsv", "length"];
+        if let Self::Absolute(names) = self {
+            if let Some(name) = names.get(0) {
+                if let Some(Self::Std(temp)) = usespace.get(&name.to_string()) {
+                    if temp.is_empty() {
+                        return Self::Std(name.to_string()).get_latex(namespaces, usespace, ids);
+                    }
+                }
+            }
+        }
         if let Self::Std(name) = self {
             let name = &name.as_str();
             if consts.contains(name) {
@@ -124,7 +133,17 @@ pub enum Variable {
                     return Ok(Self::Absolute(temp1.to_vec()));
                 }
             },
-            _ => todo!(),
+            /*
+            Self::Std(name) => if name.is_empty() {
+                if let Some(name) = other.get(0) {
+                    return Ok(Self::Std(name.to_string()));
+                }
+                return Err("Could not append");
+            } else {
+                return Err("Could not append");
+            },
+            */
+            _ => Err("Could not append"),
         }
     }
     fn identifiers_from_tokens<'a, I>(tokens: &mut Peekable<I>) -> Result<Vec<String>, &'static str>

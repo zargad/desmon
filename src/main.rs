@@ -90,7 +90,10 @@ enum DesmosLine {
                             usespace.insert(key.to_string(), Variable::Relative(value));
                             current_uses.push(key.to_string());
                         },
-                        _ => todo!(),
+                        Variable::Std(name) => {
+                            usespace.insert(name.to_string(), Variable::Std(String::new()));  
+                            current_uses.push(name.to_string());
+                        },
                     }
                 },
                 _ => (),
