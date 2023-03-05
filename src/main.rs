@@ -168,8 +168,16 @@ struct GraphingCalculator {
         for expr in &self.expressions {
             println!("{:?},", expr.get_desmos_object_js());
         }
-        println!("]}}}}
-    )");
+        println!("
+        ]}},
+        graph: {{ 
+            showGrid: false, 
+            showXAxis: false, 
+            showYAxis: false,
+            xAxisNumbers: false,
+            yAxisNumbers: false,
+        }},
+    }})");
         println!("</script>");
         println!("</body>");
         println!("</html>");

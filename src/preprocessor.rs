@@ -24,6 +24,7 @@ pub fn preprocess<P: AsRef<Path> + AsRef<OsStr>>(path: P, definitions: &mut Hash
                         result.push(c);
                     },
                 }
+                // result.push('\n');
             } else {
                 result.push('/');
             },
