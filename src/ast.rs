@@ -33,7 +33,7 @@ pub enum Variable {
     Relative(Vec<String>),
     Std(String),
 } impl Variable {
-    pub fn get_latex(&self, namespaces: &[String], ids: &HashMap<Vec<String>, usize>) -> String {
+    pub fn get_latex(&self, namespaces: &[String], usespace: &HashMap<String, Self>, ids: &HashMap<Vec<String>, usize>) -> String {
         let consts = vec!["pi", "e", "tau"];
         let funcs = vec!["floor", "random", "abs", "sin", "cos", "tan", "rgb", "hsv", "length"];
         if let Self::Std(name) = self {
@@ -45,7 +45,7 @@ pub enum Variable {
             } else {
                 String::new()
             }
-        } else if let Some(name) = self.get_name(namespaces.to_vec()) {
+        } else if let Some(name) = self.get_name(namespaces.to_vec(), usespace) {
             if let Some(id) = ids.get(&name) {
                 let (prefix, code) = latex_from_id(*id);
                 if code.is_empty() {
@@ -96,15 +96,35 @@ pub enum Variable {
             Err("Unexpected token")
         }
     }
-    pub fn get_name(&self, namespaces: Vec<String>) -> Option<Vec<String>> {
+    pub fn get_name(&self, namespaces: Vec<String>, usespace: &HashMap<String, Self>) -> Option<Vec<String>> {
         match self {
             Self::Relative(identifiers) => {
                 let mut result = namespaces.to_vec();
                 result.append(&mut identifiers.to_vec());
                 Some(result)
             },
-            Self::Absolute(identifiers) => Some(identifiers.to_vec()),
+            Self::Absolute(identifiers) => {
+                if let Some(head) = identifiers.get(0) {
+                    if let Some(tail) = usespace.get(head) {
+                        return tail.append(&identifiers.to_vec()).ok()?.get_name(namespaces, usespace);
+                    }
+                }
+                return Some(identifiers.to_vec());
+            },
             _ => None,
+        }
+    }
+    fn append(&self, other: &Vec<String>) -> Result<Self, &'static str> {
+        match self {
+            Self::Relative(identifiers) | Self::Absolute(identifiers) => {
+                {
+                    let temp1 = &mut identifiers.to_vec();
+                    let temp2 = &mut other.to_vec();
+                    temp1.append(temp2);
+                    return Ok(Self::Absolute(temp1.to_vec()));
+                }
+            },
+            _ => todo!(),
         }
     }
     fn identifiers_from_tokens<'a, I>(tokens: &mut Peekable<I>) -> Result<Vec<String>, &'static str>
@@ -179,24 +199,24 @@ pub enum ExpressionItem {
         }
         Err("Empty variable")
     }
-    pub fn get_variable_name(&self, namespaces: Vec<String>) -> Option<Vec<String>> {
+    pub fn get_variable_name(&self, namespaces: Vec<String>, usespace: &HashMap<String, Variable>) -> Option<Vec<String>> {
         if let Self::Variable(v) = self {
-            v.get_name(namespaces)
+            v.get_name(namespaces, usespace)
         } else {
             None
         }
     }
-    pub fn get_latex(&self, namespaces: &[String], ids: &HashMap<Vec<String>, usize>) -> String {
+    pub fn get_latex(&self, namespaces: &[String], usespace: &HashMap<String, Variable>, ids: &HashMap<Vec<String>, usize>) -> String {
         match self {
-            Self::Variable(v) => v.get_latex(namespaces, ids),
+            Self::Variable(v) => v.get_latex(namespaces, usespace, ids),
             Self::Other(t) => t.get_latex(),
             // _ => String::new(),
         }
     }
-    pub fn vec_to_latex(vec: Vec<Self>, namespaces: Vec<String>, ids: &HashMap<Vec<String>, usize>) -> String {
+    pub fn vec_to_latex(vec: Vec<Self>, namespaces: Vec<String>, usespace: &HashMap<String, Variable>, ids: &HashMap<Vec<String>, usize>) -> String {
         let mut result = String::new();
         for i in vec {
-            result.push_str(i.get_latex(&namespaces, ids).as_str());
+            result.push_str(i.get_latex(&namespaces, usespace, ids).as_str());
         }
         result
     }
@@ -207,22 +227,14 @@ pub enum ExpressionItem {
 pub enum AbstractSyntaxItem {
     Expression(Vec<ExpressionItem>),
     Graph(Option<ExpressionItem>, Option<String>, Vec<ExpressionItem>),
+    Use(ExpressionItem),
     Namespace(String, Vec<Self>),
     Text(String),
 } impl AbstractSyntaxItem {
-    /*
-    pub fn vec_from_file(path: &str, print_tokens: bool, print_preprocess: bool) -> Result<Vec<Self>, &'static str> {
-        let tokens = Token::vec_from_file(path, print_preprocess)?;
-        if print_tokens {
-            eprintln!("{tokens:?}");
-        }
-        return Self::vec_from_tokens(tokens);
-    }
-    */
-    pub fn get_variable_counts(&self, result: &mut HashMap<Vec<String>, u32>, namespaces: &[String]) {
+    pub fn get_variable_counts(&self, result: &mut HashMap<Vec<String>, u32>, namespaces: &[String], usespace: &HashMap<String, Variable>) {
         match self {
-            Self::Expression(items) => for i in items {
-                if let Some(name) = i.get_variable_name(namespaces.to_vec()) {
+            Self::Expression(items) | Self::Graph(_, _, items) => for i in items {
+                if let Some(name) = i.get_variable_name(namespaces.to_vec(), usespace) {
                     result
                         .entry(name)
                         .and_modify(|count| *count += 1)
@@ -233,29 +245,26 @@ pub enum AbstractSyntaxItem {
                 let names = &mut namespaces.to_vec();
                 names.push(name.to_string());
                 for i in items {
-                    i.get_variable_counts(result, names);
-                }
-            },
-            Self::Graph(color, _, items) => {
-                for i in items {
-                    if let Some(name) = i.get_variable_name(namespaces.to_vec()) {
-                        result
-                            .entry(name)
-                            .and_modify(|count| *count += 1)
-                            .or_insert(1);
-                    }
-                }
-                if let Some(c) = color {
-                    if let Some(name) = c.get_variable_name(namespaces.to_vec()) {
-                        result
-                            .entry(name)
-                            .and_modify(|count| *count += 1)
-                            .or_insert(1);
-                    }
+                    i.get_variable_counts(result, names, usespace);
                 }
             },
             _ => (),
         }
+    }
+    pub fn use_from_tokens<'a, I>(tokens: &mut Peekable<I>) -> Result<Self, &'static str>
+    where I: Iterator<Item = &'a Token>
+    {
+        if let Some(Token::Whitespace(_)) = tokens.peek() {
+            tokens.next();
+        }
+        let variable = ExpressionItem::variable_from_tokens(tokens)?;
+        if let Some(Token::Whitespace(_)) = tokens.peek() {
+            tokens.next();
+        }
+        if let Some(Token::Symbol(Symbol::Semicolon)) = tokens.next() {} else {
+            Err("';' expected")?;
+        }
+        Ok(Self::Use(variable))
     }
     pub fn graph_from_tokens<'a, I>(tokens: &mut Peekable<I>) -> Result<Self, &'static str>
     where I: Iterator<Item = &'a Token>
@@ -311,25 +320,6 @@ pub enum AbstractSyntaxItem {
     {
         Ok(Self::Expression(ExpressionItem::vec_from_tokens(tokens)?))
     }
-    /*
-    pub fn to_latex_vec(&self, namespaces: &mut Vec<String>) -> Vec<String> {
-        match self {
-            Self::Expression(items) => {
-                let temp = vec![ExpressionItem::vec_to_string(items.to_vec(), namespaces.to_vec())];
-                return temp;
-            },
-            Self::Namespace(name, asts) => {
-                namespaces.push(name.to_string());
-                let mut result = vec![];
-                for ast in asts {
-                    result.append(&mut ast.to_strings_vec(namespaces));
-                }
-                namespaces.pop();
-                return result;
-            },
-        }
-    }
-    */
 }
 
 
@@ -348,8 +338,9 @@ pub trait AbstractSyntaxTreeTrait {
 impl AbstractSyntaxTreeTrait for AbstractSyntaxTree {
     fn get_variable_ids(&self) -> HashMap<Vec<String>, usize> {
         let mut counts = HashMap::new();
+        let usespace = &HashMap::new();
         for i in self {
-            i.get_variable_counts(&mut counts, &[]);
+            i.get_variable_counts(&mut counts, &[], usespace);
         }
         let mut hash_vec: Vec<(&Vec<String>, &u32)> = counts.iter().collect();
         hash_vec.sort_by(|a, b| b.1.cmp(a.1));
@@ -386,6 +377,10 @@ impl AbstractSyntaxTreeTrait for AbstractSyntaxTree {
                 Token::Keyword(Keyword::Graph) => {
                     tokens.next();    
                     self.push(A::graph_from_tokens(tokens)?);
+                },
+                Token::Keyword(Keyword::Use) => {
+                    tokens.next();    
+                    self.push(A::use_from_tokens(tokens)?);
                 },
                 Token::Text(t) => {
                     tokens.next();

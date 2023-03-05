@@ -174,6 +174,7 @@ pub enum Keyword {
     Graph,
     This,
     Std,
+    Use,
 } impl Keyword {
     pub fn from_string(string: String) -> Option<Self> {
         match string.as_str() {
@@ -181,6 +182,7 @@ pub enum Keyword {
             "namespace" => Some(Self::Namespace),
             "this" => Some(Self::This),
             "std" => Some(Self::Std),
+            "use" => Some(Self::Use),
             _ => None
         }
     }
@@ -196,20 +198,6 @@ pub enum Token {
     Text(String),
     Keyword(Keyword),
 } impl Token {
-    /*
-    pub fn vec_from_file(path: &str, print_preprocess: bool) -> Result<Vec<Self>, &'static str> {
-        let contents = read_to_string(path)
-            .expect("Should have been able to read the file");
-        let preprocess_string = contents;
-        /*
-        let preprocess_string = preprocess(contents)?;
-        if print_preprocess {
-            eprintln!("{preprocess_string:?}");
-        }
-        */
-        Ok(Self::vec_from_string(preprocess_string))
-    }
-    */
     pub fn from_ref(token: &Self) -> Self {
         match token {
             Self::Symbol(c) => Self::Symbol(*c),
@@ -255,7 +243,7 @@ pub enum Token {
                         value.push('\n');
                         is_newline = true;
                         break;
-                    } if c.is_whitespace() {
+                    } else if c.is_whitespace() {
                         chars.next();
                     } else {
                         if is_newline {

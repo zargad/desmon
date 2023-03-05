@@ -6,7 +6,7 @@ use crate::preprocessor::preprocess;
 
 mod ast;
 use crate::ast::lexer::Token;
-use crate::ast::{AbstractSyntaxItem, AbstractSyntaxTree, AbstractSyntaxTreeTrait, ExpressionItem};
+use crate::ast::{AbstractSyntaxItem, AbstractSyntaxTree, AbstractSyntaxTreeTrait, ExpressionItem, Variable};
 
 
 #[derive(Debug)]
@@ -27,29 +27,31 @@ enum DesmosLine {
     pub fn vec_from_ast(ast: AbstractSyntaxTree) -> Vec<Self> {
         let mut result = vec![];
         let ids = &ast.get_variable_ids();
-        Self::fill_from_ast(&mut result, ast, vec![], ids);
+        let usespace = &mut HashMap::new();
+        Self::fill_from_ast(&mut result, ast, vec![], usespace, ids);
         result
     }
-    pub fn fill_from_ast(vec: &mut Vec<Self>, ast: AbstractSyntaxTree, namespaces: Vec<String>, ids: &HashMap<Vec<String>, usize>) {
+    pub fn fill_from_ast(vec: &mut Vec<Self>, ast: AbstractSyntaxTree, namespaces: Vec<String>, usespace: &mut HashMap<String, Variable>, ids: &HashMap<Vec<String>, usize>) {
         type T = AbstractSyntaxItem;
         let temp = namespaces.join(".");
         let mut folders = vec![];
+        let mut current_uses = vec![];
         for i in ast {
             match i {
                 T::Expression(e) => vec.push(Self::Expression(DesmosExpression {
-                    latex: ExpressionItem::vec_to_latex(e, namespaces.to_vec(), ids),
+                    latex: ExpressionItem::vec_to_latex(e, namespaces.to_vec(), usespace, ids),
                     folder_id: if temp.is_empty() { None } else { Some(temp.to_string()) }, 
                     opacity: None,
                     color_latex: None,
                 })),
                 T::Graph(c, opacity, e) => {
                     let color = if let Some(c) = c { 
-                        c.get_latex(&namespaces, ids)
+                        c.get_latex(&namespaces, usespace, ids)
                     } else { 
                         String::new() 
                     };
                     vec.push(Self::Expression(DesmosExpression {
-                        latex: ExpressionItem::vec_to_latex(e, namespaces.to_vec(), ids),
+                        latex: ExpressionItem::vec_to_latex(e, namespaces.to_vec(), usespace, ids),
                         folder_id: if temp.is_empty() { None } else { Some(temp.to_string()) }, 
                         opacity,
                         color_latex: Some(color),
@@ -59,12 +61,45 @@ enum DesmosLine {
                     let mut names = namespaces.to_vec();
                     names.push(name.to_string());
                     folders.push(Self::Folder(names.join(".")));
-                    Self::fill_from_ast(&mut folders, e, names, ids);
+                    Self::fill_from_ast(&mut folders, e, names, usespace, ids);
                 },
                 T::Text(t) => vec.push(Self::Text(t, if temp.is_empty() { None } else { Some(temp.to_string()) })),
+                T::Use(ExpressionItem::Variable(v)) => {
+                    match v {
+                        Variable::Absolute(is) => {
+                            let mut key = String::new();
+                            let mut value = vec![];
+                            for i in is {
+                                if !key.is_empty() {
+                                    value.push(key.to_string());
+                                }
+                                key = i;
+                            }
+                            usespace.insert(key.to_string(), Variable::Absolute(value));
+                            current_uses.push(key.to_string());
+                        },
+                        Variable::Relative(is) => {
+                            let mut key = String::new();
+                            let mut value = vec![];
+                            for i in is {
+                                if !key.is_empty() {
+                                    value.push(key.to_string());
+                                }
+                                key = i;
+                            }
+                            usespace.insert(key.to_string(), Variable::Relative(value));
+                            current_uses.push(key.to_string());
+                        },
+                        _ => todo!(),
+                    }
+                },
+                _ => (),
             }
         }
         vec.append(&mut folders);
+        for i in current_uses {
+            usespace.remove(&i);
+        }
     }
     fn get_desmos_object_js(&self) -> HashMap<&'static str, String> {
         match self {
@@ -117,15 +152,6 @@ struct GraphingCalculator {
             api_key: "dcb31709b452b1cf9dc26972add0fda6".to_string(),
         }
     }
-    /*
-    pub fn from_file(path: &str, print_tokens: bool, print_ast: bool, print_preprocess: bool) -> Result<Self, &'static str> {
-        let list = AbstractSyntaxItem::vec_from_file(path, print_tokens, print_preprocess)?;
-        if print_ast {
-            eprintln!("{list:?}");
-        }
-        Ok(Self::new(list))
-    }
-    */
     pub fn print_html(&self) {
         let api_link = self.get_api_link();
         println!(r"<!DOCTYPE html>
